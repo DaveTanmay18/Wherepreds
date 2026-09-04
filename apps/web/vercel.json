@@ -1,9 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": null,
-  "installCommand": "pnpm install --no-prod",
-  "buildCommand": "pnpm --filter @wp/web build",
-  "outputDirectory": "apps/web/dist",
   "rewrites": [
     {
       "source": "/api/:path*",

@@ -120,12 +120,32 @@ Always `migrate deploy`.
 
 ### 3. Deploy the web app
 
-Edit `vercel.json` and replace `REPLACE-WITH-YOUR-API-HOST` with the Render
-hostname from step 1. Commit it.
+Put the Render hostname from step 1 into the rewrite. The live deployment uses
+Root Directory `apps/web`, so `apps/web/vercel.json` is the file that governs;
+the root one is kept in sync so a change of Root Directory does not silently
+break the proxy.
 
-Then **Vercel → Add New → Project**, import the repo, and leave every setting
-alone — `vercel.json` already carries the install command, build command and
-output directory. Root directory stays the repo root.
+⚠️ **There are two `vercel.json` files, and which one applies depends entirely
+on the project's Root Directory setting.** Vercel reads the one _inside_ the
+Root Directory and ignores the other completely:
+
+| Root Directory    | File used              | How the build is configured                                               |
+| ----------------- | ---------------------- | ------------------------------------------------------------------------- |
+| repo root (blank) | `vercel.json`          | Explicit: build command, output `apps/web/dist`, install with `--no-prod` |
+| `apps/web`        | `apps/web/vercel.json` | Vercel's own Vite preset detects everything; output is `dist`             |
+
+Both are committed so either setting works. **Keep the API host in the rewrite
+in sync across both files** — editing only one is the obvious way to lose an
+afternoon.
+
+The symptom of a mismatch is
+`No Output Directory named "dist" found after the Build completed`: Root
+Directory was `apps/web`, so the root `vercel.json` naming `apps/web/dist` was
+never read, and Vercel fell back to the Vite default of `dist`.
+
+The `apps/web` layout has one incidental advantage: Vercel's own install step
+handles devDependencies correctly, so the `--no-prod` workaround is not needed
+there.
 
 No environment variables are needed on Vercel. The web app has no
 `import.meta.env` usage at all; everything reaches it through the proxy.
