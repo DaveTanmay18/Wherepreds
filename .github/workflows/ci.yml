@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  static:
+    name: Lint, typecheck, schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Boundary rules are the point of this step: `packages/scoring` importing
+      # `@wp/db`, or anything reading `score.fullTime`, fails here (P0-03).
+      - name: Lint
+        run: pnpm lint
+
+      - name: Prisma client
+        run: pnpm --filter @wp/db exec prisma generate
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Format check
+        run: pnpm format:check
+
+  test:
+    name: Tests (Neon branch)
+    runs-on: ubuntu-latest
+    # Fork PRs cannot read secrets, so the DB-backed job is skipped there
+    # rather than failing confusingly.
+    if: github.event.pull_request.head.repo.full_name == github.repository || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # A disposable Neon branch per PR (§18): real Postgres, production-shaped,
+      # thrown away on merge. Tests that touch triggers and partial indexes
+      # cannot run against a mock.
+      - name: Create Neon branch
+        id: neon
+        uses: neondatabase/create-branch-action@v5
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch_name: ci-${{ github.event.pull_request.number || github.run_id }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+
+      - name: Migrate
+        # `migrate deploy`, NOT `migrate dev`: dev wants a shadow database and
+        # hangs on Neon. deploy applies the committed migrations as-is.
+        run: pnpm --filter @wp/db exec prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+          DIRECT_URL: ${{ steps.neon.outputs.db_url }}
+
+      - name: Seed
+        run: pnpm --filter @wp/db exec tsx prisma/seed.ts
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+          DIRECT_URL: ${{ steps.neon.outputs.db_url }}
+
+      - name: Test
+        run: pnpm test
+        env:
+          DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+          DIRECT_URL: ${{ steps.neon.outputs.db_url }}
+          SESSION_SECRET: ci-only-secret-value-at-least-32-chars-long
+          NODE_ENV: test
+          LOG_LEVEL: silent
+          API_BASE_URL: http://localhost:4000
+          WEB_BASE_URL: http://localhost:5173
+
+      - name: Delete Neon branch
+        if: always()
+        uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch: ci-${{ github.event.pull_request.number || github.run_id }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+
+  build:
+    name: Build web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @wp/db exec prisma generate
+      - run: pnpm --filter @wp/web run build

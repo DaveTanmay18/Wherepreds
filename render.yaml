@@ -1,0 +1,46 @@
+# Render blueprint — API service for the test deployment.
+# See docs/deployment.md for why the topology looks like this.
+#
+# Render → New → Blueprint → point at this repo. Everything below is applied
+# automatically; the four `sync: false` values are prompted for on first
+# deploy so no secret is ever committed here.
+services:
+  - type: web
+    name: wherepreds-api
+    runtime: node
+    plan: free
+    # ⚠️ `prisma generate` is NOT optional. The client is generated into
+    # node_modules, so without this the API throws on its very first query
+    # with a build that otherwise looks completely successful.
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @wp/db generate
+    startCommand: pnpm --filter @wp/api start
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        # This is what flips the session cookie to Secure (session.ts).
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      # Neon POOLED endpoint. The dev setting points at the direct endpoint
+      # for latency; do not carry that here (see .env.example).
+      - key: DATABASE_URL
+        sync: false
+      # Direct endpoint — migrations only. Prisma requires it to be present
+      # even when migrations are run from a laptop.
+      - key: DIRECT_URL
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      # The Vercel URL. Fill in after the web app is deployed.
+      - key: WEB_BASE_URL
+        sync: false
+      # ⚠️ Must be the full https:// URL, not a bare host. The env schema
+      # validates it with z.string().url() and parseEnv exits the process on
+      # failure — Render's `fromService ... property: host` yields a hostname
+      # with no scheme, so the service would die at boot.
+      - key: API_BASE_URL
+        sync: false
+# REDIS_URL is deliberately absent. The API treats Redis as a pure cache and
+# degrades to Postgres-only when it is missing (apps/api/src/lib/redis.ts),
+# which is fine at test scale. The WORKER cannot: BullMQ has no fallback, so
+# it runs locally for now.

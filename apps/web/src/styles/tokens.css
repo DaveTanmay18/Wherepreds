@@ -1,0 +1,142 @@
+/**
+ * Design tokens — architecture.md §14.2.
+ *
+ * The light palette is defined on bare :root so it is the fallback in every
+ * context. Dark redefines ONLY the token values, guarded so an explicit light
+ * choice still wins under a dark system preference.
+ *
+ * Every pair meets WCAG AA: 4.5:1 for body text, 3:1 for large text and UI
+ * borders, in both themes.
+ */
+:root {
+  /* neutral ramp — the app is mostly this */
+  --bg: #ffffff;
+  --surface: #f7f8f9;
+  --surface-raised: #ffffff;
+  --border: #e3e6e9;
+  --text: #14181c;
+  --text-muted: #5c6670;
+
+  /* one accent, used sparingly */
+  --accent: #0b7a4b; /* pitch green */
+  --accent-weak: #e6f4ee;
+  --accent-text: #ffffff;
+
+  /* semantic */
+  --positive: #127a46;
+  --negative: #b3261e;
+  --warning: #8a6100;
+  --live: #c2261c;
+
+  /* type */
+  --font-sans: 'Inter var', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-num: 'Inter var', ui-monospace, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+
+  /* 4px spacing scale */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 2px rgb(20 24 28 / 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0e1114;
+    --surface: #161a1e;
+    --surface-raised: #1d2227;
+    --border: #2a3037;
+    --text: #edeff1;
+    --text-muted: #9aa4ae;
+    --accent: #34c77b;
+    --accent-weak: #102a1e;
+    --accent-text: #08120c;
+    --positive: #34c77b;
+    --negative: #f2837c;
+    --warning: #e0b341;
+    --live: #f2554b;
+  }
+}
+
+:root[data-theme='dark'] {
+  --bg: #0e1114;
+  --surface: #161a1e;
+  --surface-raised: #1d2227;
+  --border: #2a3037;
+  --text: #edeff1;
+  --text-muted: #9aa4ae;
+  --accent: #34c77b;
+  --accent-weak: #102a1e;
+  --accent-text: #08120c;
+  --positive: #34c77b;
+  --negative: #f2837c;
+  --warning: #e0b341;
+  --live: #f2554b;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* 16px minimum on inputs stops iOS auto-zooming on focus (§14.5). */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numbers align in columns — standings are unreadable otherwise. */
+.tnum,
+table td,
+table th {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes wp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* The global prefers-reduced-motion block above already clamps animation
+   duration, so the spinner degrades to a static ring rather than vanishing. */

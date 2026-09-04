@@ -1,0 +1,39 @@
+{
+  "name": "wherepreds",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Football prediction platform where every user builds their own league, with their own rules.",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,css}\"",
+    "db:generate": "pnpm --filter @wp/db run generate",
+    "db:migrate": "pnpm --filter @wp/db run migrate",
+    "db:deploy": "pnpm --filter @wp/db run migrate:deploy",
+    "db:studio": "pnpm --filter @wp/db run studio",
+    "db:seed": "pnpm --filter @wp/db run seed",
+    "db:validate": "pnpm --filter @wp/db run validate",
+    "smoke:football": "node scripts/smoke-football-data.mjs",
+    "dev": "pnpm --parallel --filter @wp/api --filter @wp/web run dev",
+    "ingest": "pnpm --filter @wp/worker run ingest"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "eslint": "^9.18.0",
+    "eslint-import-resolver-typescript": "^3.7.0",
+    "eslint-plugin-import": "^2.31.0",
+    "globals": "^17.11.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.21.0"
+  }
+}

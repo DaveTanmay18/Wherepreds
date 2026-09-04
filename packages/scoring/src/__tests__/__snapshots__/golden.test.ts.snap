@@ -1,0 +1,271 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden file — 190 real PL 2024/25 results > Classic > scores "goalless" consistently 1`] = `
+{
+  "exact": 8,
+  "negatives": 0,
+  "outcomes": 46,
+  "total": 154,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Classic > scores "home-banker" consistently 1`] = `
+{
+  "exact": 11,
+  "negatives": 0,
+  "outcomes": 81,
+  "total": 210,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Classic > scores "narrow-away" consistently 1`] = `
+{
+  "exact": 11,
+  "negatives": 0,
+  "outcomes": 63,
+  "total": 176,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Classic > scores "narrow-home" consistently 1`] = `
+{
+  "exact": 17,
+  "negatives": 0,
+  "outcomes": 81,
+  "total": 233,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Classic > scores "rotating" consistently 1`] = `
+{
+  "exact": 14,
+  "negatives": 0,
+  "outcomes": 63,
+  "total": 184,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Classic > scores "score-draw" consistently 1`] = `
+{
+  "exact": 21,
+  "negatives": 0,
+  "outcomes": 46,
+  "total": 180,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Exact Score Heavy > scores "goalless" consistently 1`] = `
+{
+  "exact": 8,
+  "negatives": 0,
+  "outcomes": 46,
+  "total": 118,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Exact Score Heavy > scores "home-banker" consistently 1`] = `
+{
+  "exact": 11,
+  "negatives": 0,
+  "outcomes": 81,
+  "total": 180,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Exact Score Heavy > scores "narrow-away" consistently 1`] = `
+{
+  "exact": 11,
+  "negatives": 0,
+  "outcomes": 63,
+  "total": 162,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Exact Score Heavy > scores "narrow-home" consistently 1`] = `
+{
+  "exact": 17,
+  "negatives": 0,
+  "outcomes": 81,
+  "total": 234,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Exact Score Heavy > scores "rotating" consistently 1`] = `
+{
+  "exact": 14,
+  "negatives": 0,
+  "outcomes": 63,
+  "total": 189,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Exact Score Heavy > scores "score-draw" consistently 1`] = `
+{
+  "exact": 21,
+  "negatives": 0,
+  "outcomes": 46,
+  "total": 235,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Goalscorer > scores "goalless" consistently 1`] = `
+{
+  "exact": 8,
+  "negatives": 0,
+  "outcomes": 46,
+  "total": 108,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Goalscorer > scores "home-banker" consistently 1`] = `
+{
+  "exact": 11,
+  "negatives": 0,
+  "outcomes": 81,
+  "total": 184,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Goalscorer > scores "narrow-away" consistently 1`] = `
+{
+  "exact": 11,
+  "negatives": 0,
+  "outcomes": 63,
+  "total": 148,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Goalscorer > scores "narrow-home" consistently 1`] = `
+{
+  "exact": 17,
+  "negatives": 0,
+  "outcomes": 81,
+  "total": 196,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Goalscorer > scores "rotating" consistently 1`] = `
+{
+  "exact": 14,
+  "negatives": 0,
+  "outcomes": 63,
+  "total": 154,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Goalscorer > scores "score-draw" consistently 1`] = `
+{
+  "exact": 21,
+  "negatives": 0,
+  "outcomes": 46,
+  "total": 134,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Survival > scores "goalless" consistently 1`] = `
+{
+  "exact": 8,
+  "negatives": 144,
+  "outcomes": 46,
+  "total": -243,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Survival > scores "home-banker" consistently 1`] = `
+{
+  "exact": 11,
+  "negatives": 109,
+  "outcomes": 81,
+  "total": -65,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Survival > scores "narrow-away" consistently 1`] = `
+{
+  "exact": 11,
+  "negatives": 127,
+  "outcomes": 63,
+  "total": -121,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Survival > scores "narrow-home" consistently 1`] = `
+{
+  "exact": 17,
+  "negatives": 109,
+  "outcomes": 81,
+  "total": -28,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Survival > scores "rotating" consistently 1`] = `
+{
+  "exact": 14,
+  "negatives": 127,
+  "outcomes": 63,
+  "total": -121,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Survival > scores "score-draw" consistently 1`] = `
+{
+  "exact": 21,
+  "negatives": 144,
+  "outcomes": 46,
+  "total": -151,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Underdog > scores "goalless" consistently 1`] = `
+{
+  "exact": 8,
+  "negatives": 0,
+  "outcomes": 46,
+  "total": 154,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Underdog > scores "home-banker" consistently 1`] = `
+{
+  "exact": 11,
+  "negatives": 0,
+  "outcomes": 81,
+  "total": 210,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Underdog > scores "narrow-away" consistently 1`] = `
+{
+  "exact": 11,
+  "negatives": 0,
+  "outcomes": 63,
+  "total": 176,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Underdog > scores "narrow-home" consistently 1`] = `
+{
+  "exact": 17,
+  "negatives": 0,
+  "outcomes": 81,
+  "total": 233,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Underdog > scores "rotating" consistently 1`] = `
+{
+  "exact": 14,
+  "negatives": 0,
+  "outcomes": 63,
+  "total": 184,
+}
+`;
+
+exports[`golden file — 190 real PL 2024/25 results > Underdog > scores "score-draw" consistently 1`] = `
+{
+  "exact": 21,
+  "negatives": 0,
+  "outcomes": 46,
+  "total": 180,
+}
+`;

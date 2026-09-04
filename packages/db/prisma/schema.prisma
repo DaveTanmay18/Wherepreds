@@ -1,0 +1,1266 @@
+// WherePreds — database schema
+// Spec: docs/architecture.md §6. Keep the two in sync; the doc explains WHY,
+// this file is the executable truth.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled (pgBouncer) — runtime
+  directUrl = env("DIRECT_URL") // direct — migrations only
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ENUMS
+// ═══════════════════════════════════════════════════════════════════════════
+
+enum CompetitionType {
+  LEAGUE
+  DOMESTIC_CUP
+  LEAGUE_CUP
+  SUPER_CUP
+  CONTINENTAL // UEFA Champions League
+}
+
+/// Structural stage a round belongs to. Domestic leagues only ever use
+/// REGULAR_SEASON. Anything that sorts or labels rounds must read this —
+/// Round.number is a matchday index in a league and a stage index in a cup.
+///
+/// Provider `stage` → RoundType, verified live 2026-08-18 against the 2024/25
+/// UCL (189 matches). Unrecognised stage values MUST throw (§11.1).
+enum RoundType {
+  REGULAR_SEASON //  ← "REGULAR_SEASON"
+  GROUP_STAGE //      ← "GROUP_STAGE"     pre-2024/25 UCL, historical seasons
+  LEAGUE_PHASE //     ← "LEAGUE_STAGE"    144 matches; UNDOCUMENTED value
+  KNOCKOUT_PLAYOFF // ← "PLAYOFFS"         16 matches = 8 ties x 2 legs
+  ROUND_OF_16 //      ← "LAST_16"          16 matches = 8 ties x 2 legs
+  QUARTER_FINAL //    ← "QUARTER_FINALS"    8 matches = 4 ties x 2 legs
+  SEMI_FINAL //       ← "SEMI_FINALS"       4 matches = 2 ties x 2 legs
+  FINAL //            ← "FINAL"             1 match, single leg
+}
+
+/// How a two-legged tie was ultimately settled.
+enum TieDecider {
+  AGGREGATE
+  EXTRA_TIME
+  PENALTIES
+  AWARDED // decided off the pitch
+}
+
+/// How a rule set interprets "the score" for a match that can run past 90'.
+/// Declared per league because leagues genuinely disagree, and guessing on
+/// their behalf produces the worst kind of dispute.
+enum KnockoutScoreBasis {
+  NINETY_MINUTES // default: normal time only, matching most house rules
+  AFTER_EXTRA_TIME
+  INCLUDING_PENALTIES // the shootout decides the outcome market
+}
+
+enum FixtureStatus {
+  SCHEDULED
+  DELAYED
+  LIVE
+  HALF_TIME
+  SECOND_HALF
+  EXTRA_TIME
+  PENALTY_SHOOTOUT
+  FINISHED
+  POSTPONED
+  ABANDONED
+  CANCELLED
+  AWARDED // result decided off the pitch
+}
+
+enum PositionGroup {
+  GOALKEEPER
+  DEFENDER
+  MIDFIELDER
+  FORWARD
+}
+
+enum PreferredFoot {
+  LEFT
+  RIGHT
+  BOTH
+  UNKNOWN
+}
+
+enum MatchEventType {
+  GOAL
+  OWN_GOAL
+  PENALTY_SCORED
+  PENALTY_MISSED
+  ASSIST
+  YELLOW_CARD
+  SECOND_YELLOW
+  RED_CARD
+  SUBSTITUTION
+  VAR_DECISION
+  PENALTY_SHOOTOUT_SCORED
+  PENALTY_SHOOTOUT_MISSED
+}
+
+enum MatchOutcome {
+  HOME
+  DRAW
+  AWAY
+}
+
+/// Markets a league may enable. Adding one requires: an enum value, a
+/// fact-builder branch in packages/scoring/src/facts.ts, and a UI input.
+///
+/// Availability is provider-dependent (§11.5). [DEEP] needs the Deep Data
+/// plan; [STAT] needs the Statistic add-on. On the current Free tier BOTH are
+/// off, so those markets are gated off by POST /rules/validate rather than
+/// silently awarding nobody any points. Upgrading flips a capability flag —
+/// it is not a schema or code change.
+enum MarketType {
+  EXACT_SCORE
+  MATCH_OUTCOME
+  DOUBLE_CHANCE
+  BOTH_TEAMS_TO_SCORE
+  TOTAL_GOALS_OVER_UNDER
+  CORRECT_MARGIN
+  HALF_TIME_OUTCOME //        score.halfTime, available on every plan
+  FIRST_GOALSCORER //         [DEEP] needs goals[]
+  ANYTIME_GOALSCORER //       [DEEP]
+  CLEAN_SHEET
+  RED_CARD_SHOWN //           [DEEP] needs bookings[]
+  TOTAL_CORNERS_OVER_UNDER // [STAT] not bought — gated off
+  /// Knockout only: which club advances. Asked on the deciding leg, scored
+  /// against Tie.winnerTeamId rather than a single fixture's score.
+  TO_QUALIFY
+}
+
+enum LeagueVisibility {
+  PUBLIC // listed, anyone may join
+  UNLISTED // join by code/link only
+  PRIVATE // invite only
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MemberStatus {
+  ACTIVE
+  INVITED
+  REQUESTED
+  LEFT
+  REMOVED
+  BANNED
+}
+
+enum LeagueRoundStatus {
+  UPCOMING // deadline in the future, predictions open
+  LOCKED // deadline passed, matches in progress
+  PROVISIONAL // scored, but results may still be corrected
+  FINAL // scored and settled
+  VOID // round abandoned, no points awarded
+}
+
+enum PredictionStatus {
+  DRAFT // autosaved, not counted
+  SUBMITTED // counted once the deadline passes
+  LOCKED // deadline passed, immutable
+  SCORED
+  VOID // fixture cancelled under a rule set that voids
+  MISSED // no prediction made; may attract a default per rules
+}
+
+enum DeadlineStrategy {
+  PER_FIXTURE_KICKOFF // each match locks individually at kickoff - offset
+  ROUND_FIRST_KICKOFF // whole round locks at first kickoff - offset
+  FIXED_DATETIME // explicit datetime set by the league admin
+  CUSTOM_PER_ROUND // admin sets each round manually
+}
+
+enum BoosterType {
+  DOUBLE_POINTS // one fixture, x2
+  TRIPLE_POINTS // one fixture, x3
+  BANKER // nominate a fixture; multiplier from config
+  INSURANCE // floor a round's score at the user's average
+  WILDCARD_ROUND // whole round multiplied
+  NO_NEGATIVES // suppress negative points for a round
+}
+
+enum ScoringRunStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  SUPERSEDED
+}
+
+enum IngestJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  PARTIAL
+}
+
+enum ExternalEntity {
+  COMPETITION
+  SEASON
+  TEAM
+  PLAYER
+  FIXTURE
+  VENUE
+  ROUND
+  TIE
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CONTEXT 1 — FOOTBALL DATA  (written only by the ingestion worker)
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Country {
+  id      String  @id @default(cuid())
+  name    String  @unique
+  isoCode String? @unique @map("iso_code") @db.VarChar(3)
+  flagUrl String? @map("flag_url")
+
+  competitions Competition[]
+  teams        Team[]
+  players      Player[]
+
+  @@map("countries")
+}
+
+model Competition {
+  id            String          @id @default(cuid())
+  /// Stable internal slug, e.g. "premier-league". Safe to use in URLs.
+  slug          String          @unique
+  name          String
+  shortName     String?         @map("short_name")
+  type          CompetitionType @default(LEAGUE)
+  /// 1 = top flight. Used for "top 5 leagues" filtering and rule context.
+  tier          Int             @default(1)
+  logoUrl       String?         @map("logo_url")
+  /// Null for continental competitions — the UCL belongs to no country.
+  /// Every flag-rendering surface needs a fallback because of this.
+  countryId     String?         @map("country_id")
+  /// "UEFA" for the Champions League, null for domestic competitions.
+  confederation String?
+  isSupported   Boolean         @default(true) @map("is_supported")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  country Country? @relation(fields: [countryId], references: [id])
+  seasons Season[]
+
+  @@index([countryId])
+  @@index([isSupported, tier])
+  @@map("competitions")
+}
+
+model Season {
+  id            String   @id @default(cuid())
+  competitionId String   @map("competition_id")
+  /// Display label, e.g. "2025/26"
+  label         String
+  /// Starting calendar year, e.g. 2025. Used for ordering.
+  startYear     Int      @map("start_year")
+  startDate     DateTime @map("start_date") @db.Date
+  endDate       DateTime @map("end_date") @db.Date
+  isCurrent     Boolean  @default(false) @map("is_current")
+  /// Number of matchdays; null for cups.
+  totalRounds   Int?     @map("total_rounds")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  competition   Competition        @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  rounds        Round[]
+  teamSeasons   TeamSeason[]
+  fixtures      Fixture[]
+  ties          Tie[]
+  standings     StandingRow[]
+  playerSeasons PlayerSeasonStat[]
+  leagues       PredictionLeague[]
+
+  @@unique([competitionId, startYear])
+  @@index([isCurrent])
+  @@map("seasons")
+}
+
+model Round {
+  id          String    @id @default(cuid())
+  seasonId    String    @map("season_id")
+  /// Ordinal within the season. A matchday index in a league; a stage index in
+  /// a cup. Never assume it means "matchday" without checking `type`.
+  number      Int
+  name        String // "Matchday 12", "Round of 16"
+  type        RoundType @default(REGULAR_SEASON)
+  /// Set only for the pre-2024/25 UCL group stage ("Group C").
+  groupName   String?   @map("group_name")
+  /// True for knockout rounds played over two legs (not the final).
+  isTwoLegged Boolean   @default(false) @map("is_two_legged")
+  startsAt    DateTime? @map("starts_at")
+  endsAt      DateTime? @map("ends_at")
+  isCurrent   Boolean   @default(false) @map("is_current")
+
+  /// When the draw for this round takes place. Until it happens the fixture
+  /// list is empty and any LeagueRound built on it is provisional.
+  drawAt          DateTime? @map("draw_at")
+  /// False while fixtures are still unknown or subject to a draw.
+  isScheduleFinal Boolean   @default(true) @map("is_schedule_final")
+
+  season       Season        @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  fixtures     Fixture[]
+  ties         Tie[]
+  standings    StandingRow[]
+  leagueRounds LeagueRound[]
+
+  @@unique([seasonId, number])
+  @@index([seasonId, startsAt])
+  @@index([seasonId, type])
+  @@map("rounds")
+}
+
+/// A knockout tie between two clubs, played over one leg (the final) or two.
+/// First-class because "who goes through?" is the most-predicted question in
+/// knockout football, and deriving it from two loose fixtures at scoring time
+/// would be the fragile way to answer it.
+///
+/// The provider has NO tie or aggregate concept — it returns two independent
+/// matches with a `stage` and nothing linking them. This model is entirely our
+/// construction (§11.4).
+model Tie {
+  id       String @id @default(cuid())
+  seasonId String @map("season_id")
+  roundId  String @map("round_id")
+  /// Team A is the side at home in the first leg.
+  teamAId  String @map("team_a_id")
+  teamBId  String @map("team_b_id")
+
+  aggregateA    Int?        @map("aggregate_a")
+  aggregateB    Int?        @map("aggregate_b")
+  winnerTeamId  String?     @map("winner_team_id")
+  decidedBy     TieDecider? @map("decided_by")
+  /// Set when the tie is settled; null while any leg is unplayed.
+  settledAt     DateTime?   @map("settled_at")
+  /// Feeds the same scoring idempotency hash as its fixtures', so a corrected
+  /// second leg also rescores the tie-level TO_QUALIFY predictions.
+  resultVersion Int         @default(0) @map("result_version")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  season   Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  round    Round     @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  teamA    Team      @relation("TieTeamA", fields: [teamAId], references: [id])
+  teamB    Team      @relation("TieTeamB", fields: [teamBId], references: [id])
+  winner   Team?     @relation("TieWinner", fields: [winnerTeamId], references: [id])
+  fixtures Fixture[]
+
+  @@unique([roundId, teamAId, teamBId])
+  @@index([seasonId])
+  @@index([winnerTeamId])
+  @@map("ties")
+}
+
+model Venue {
+  id       String  @id @default(cuid())
+  name     String
+  city     String?
+  capacity Int?
+  surface  String?
+  imageUrl String? @map("image_url")
+
+  teams    Team[]
+  fixtures Fixture[]
+
+  @@index([name])
+  @@map("venues")
+}
+
+model Team {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  name         String
+  shortName    String?  @map("short_name")
+  /// 3-letter code used in compact mobile fixture rows: "MCI", "RMA".
+  tla          String?  @db.VarChar(4)
+  crestUrl     String?  @map("crest_url")
+  /// Primary brand colour, used for subtle accenting only (see §14.4).
+  primaryColor String?  @map("primary_color") @db.VarChar(9)
+  foundedYear  Int?     @map("founded_year")
+  countryId    String?  @map("country_id")
+  venueId      String?  @map("venue_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  country       Country?              @relation(fields: [countryId], references: [id])
+  venue         Venue?                @relation(fields: [venueId], references: [id])
+  teamSeasons   TeamSeason[]
+  homeFixtures  Fixture[]             @relation("HomeTeam")
+  awayFixtures  Fixture[]             @relation("AwayTeam")
+  tiesAsA       Tie[]                 @relation("TieTeamA")
+  tiesAsB       Tie[]                 @relation("TieTeamB")
+  tiesWon       Tie[]                 @relation("TieWinner")
+  standings     StandingRow[]
+  matchStats    TeamMatchStat[]
+  events        FixtureEvent[]
+  playerSeasons PlayerSeasonStat[]
+  selections    PredictionSelection[]
+
+  @@index([name])
+  @@map("teams")
+}
+
+/// A club's participation in one season. The anchor for squads and club stats.
+/// Because Season is scoped to a competition, a club in both La Liga and the
+/// UCL has two TeamSeason rows — which is what makes their domestic and
+/// European stats aggregate independently with no extra modelling (§5.2).
+model TeamSeason {
+  id       String @id @default(cuid())
+  teamId   String @map("team_id")
+  seasonId String @map("season_id")
+
+  team          Team                 @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  season        Season               @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  registrations PlayerRegistration[]
+  stat          TeamSeasonStat?
+
+  @@unique([teamId, seasonId])
+  @@index([seasonId])
+  @@map("team_seasons")
+}
+
+model Player {
+  id            String         @id @default(cuid())
+  slug          String         @unique
+  firstName     String?        @map("first_name")
+  lastName      String?        @map("last_name")
+  /// Name as displayed on a shirt / in a lineup.
+  displayName   String         @map("display_name")
+  dateOfBirth   DateTime?      @map("date_of_birth") @db.Date
+  nationalityId String?        @map("nationality_id")
+  heightCm      Int?           @map("height_cm")
+  weightKg      Int?           @map("weight_kg")
+  position      PositionGroup?
+  /// Finer-grained role, e.g. "Left-Back", "Attacking Midfield".
+  detailedRole  String?        @map("detailed_role")
+  preferredFoot PreferredFoot  @default(UNKNOWN) @map("preferred_foot")
+  photoUrl      String?        @map("photo_url")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  nationality   Country?              @relation(fields: [nationalityId], references: [id])
+  registrations PlayerRegistration[]
+  matchStats    PlayerMatchStat[]
+  seasonStats   PlayerSeasonStat[]
+  events        FixtureEvent[]        @relation("EventPlayer")
+  relatedEvents FixtureEvent[]        @relation("EventRelatedPlayer")
+  selections    PredictionSelection[]
+
+  @@index([displayName])
+  @@index([position])
+  @@map("players")
+}
+
+/// A player's spell at a club within a season (handles mid-season transfers
+/// and loans without losing history).
+model PlayerRegistration {
+  id           String    @id @default(cuid())
+  playerId     String    @map("player_id")
+  teamSeasonId String    @map("team_season_id")
+  shirtNumber  Int?      @map("shirt_number")
+  onLoan       Boolean   @default(false) @map("on_loan")
+  joinedAt     DateTime? @map("joined_at") @db.Date
+  leftAt       DateTime? @map("left_at") @db.Date
+
+  player     Player     @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  teamSeason TeamSeason @relation(fields: [teamSeasonId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, teamSeasonId, joinedAt])
+  @@index([teamSeasonId])
+  @@index([playerId])
+  @@map("player_registrations")
+}
+
+model Fixture {
+  id         String        @id @default(cuid())
+  seasonId   String        @map("season_id")
+  roundId    String?       @map("round_id")
+  /// Set for knockout legs; null for league matches.
+  tieId      String?       @map("tie_id")
+  /// 1 or 2 within a two-legged tie; 1 for a one-off final.
+  legNumber  Int?          @map("leg_number")
+  homeTeamId String        @map("home_team_id")
+  awayTeamId String        @map("away_team_id")
+  venueId    String?       @map("venue_id")
+  kickoffAt  DateTime      @map("kickoff_at")
+  status     FixtureStatus @default(SCHEDULED)
+  /// Minutes played, for live displays.
+  minute     Int?
+  injuryTime Int?          @map("injury_time")
+
+  /// ⚠️ From score.regularTime — NEVER score.fullTime, which on a knockout
+  /// match is regularTime+extraTime+penalties summed into a scoreline that
+  /// never happened (§11.1, task P1-04b). This is the 90-minute score, always.
+  homeGoals     Int?          @map("home_goals")
+  awayGoals     Int?          @map("away_goals")
+  homeGoalsHt   Int?          @map("home_goals_ht") // score.halfTime
+  awayGoalsHt   Int?          @map("away_goals_ht")
+  /// score.extraTime — goals scored in ET only, not cumulative.
+  homeGoalsEt   Int?          @map("home_goals_et")
+  awayGoalsEt   Int?          @map("away_goals_et")
+  /// score.penalties — shootout only (score.duration = PENALTY_SHOOTOUT).
+  homePenalties Int?          @map("home_penalties")
+  awayPenalties Int?          @map("away_penalties")
+  /// From score.winner: HOME_TEAM | AWAY_TEAM | DRAW.
+  outcome       MatchOutcome?
+
+  /// Bumped on every correction to a finished result. The scoring engine keys
+  /// idempotency on this, so a VAR reversal reliably triggers a rescore.
+  resultVersion     Int       @default(0) @map("result_version")
+  /// Set when a final score first becomes official.
+  resultConfirmedAt DateTime? @map("result_confirmed_at")
+  /// First time the provider reported a terminal status for this fixture.
+  /// The confirmation guard (§11.4) requires TWO consecutive terminal polls
+  /// before we mark it FINISHED and let scoring run — providers occasionally
+  /// emit a premature full-time, and scoring a wrong result then rescoring is
+  /// far more damaging to trust than a 60-second delay. Persisted rather than
+  /// cached so a worker restart cannot lose the first sighting.
+  terminalSeenAt    DateTime? @map("terminal_seen_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  season   Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  round    Round? @relation(fields: [roundId], references: [id])
+  tie      Tie?   @relation(fields: [tieId], references: [id])
+  homeTeam Team   @relation("HomeTeam", fields: [homeTeamId], references: [id])
+  awayTeam Team   @relation("AwayTeam", fields: [awayTeamId], references: [id])
+  venue    Venue? @relation(fields: [venueId], references: [id])
+
+  events         FixtureEvent[]
+  teamStats      TeamMatchStat[]
+  playerStats    PlayerMatchStat[]
+  leagueFixtures LeagueFixture[]
+
+  @@unique([tieId, legNumber])
+  @@index([seasonId, kickoffAt])
+  @@index([roundId])
+  @@index([status, kickoffAt])
+  @@index([homeTeamId])
+  @@index([awayTeamId])
+  @@map("fixtures")
+}
+
+model FixtureEvent {
+  id              String         @id @default(cuid())
+  fixtureId       String         @map("fixture_id")
+  teamId          String?        @map("team_id")
+  playerId        String?        @map("player_id")
+  /// Assisting player, or the player coming on in a substitution.
+  relatedPlayerId String?        @map("related_player_id")
+  type            MatchEventType
+  minute          Int
+  extraMinute     Int?           @map("extra_minute")
+  detail          String?
+  /// Sequence within the match, so "first goalscorer" is unambiguous.
+  sequence        Int
+
+  fixture       Fixture @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  team          Team?   @relation(fields: [teamId], references: [id])
+  player        Player? @relation("EventPlayer", fields: [playerId], references: [id])
+  relatedPlayer Player? @relation("EventRelatedPlayer", fields: [relatedPlayerId], references: [id])
+
+  @@unique([fixtureId, sequence])
+  @@index([fixtureId, type])
+  @@index([playerId, type])
+  @@map("fixture_events")
+}
+
+/// ⚠️ In v1 this table holds card counts only. Everything else comes from the
+/// match object's `statistics` block, which needs the Statistic add-on we have
+/// not bought (§11.5). The model and its ingest path are written and inert;
+/// buying the add-on populates them without a migration.
+/// Team-level *season* aggregates (record, form, goals, clean sheets) are
+/// unaffected — TeamSeasonStat is computed from our own results, not from here.
+model TeamMatchStat {
+  id        String  @id @default(cuid())
+  fixtureId String  @map("fixture_id")
+  teamId    String  @map("team_id")
+  isHome    Boolean @map("is_home")
+
+  // ── Derived from bookings[]. Populated when Deep Data is enabled. ──
+  yellowCards Int? @map("yellow_cards")
+  redCards    Int? @map("red_cards")
+
+  // ── Statistic add-on. Null in v1. ──
+  possession    Decimal? @db.Decimal(5, 2)
+  shots         Int?
+  shotsOnTarget Int?     @map("shots_on_target")
+  corners       Int? // would back the corners market
+  fouls         Int?
+  offsides      Int?
+
+  // ── Not available from this provider at any price. ──
+  expectedGoals Decimal? @map("expected_goals") @db.Decimal(5, 2)
+  passes        Int?
+  passAccuracy  Decimal? @map("pass_accuracy") @db.Decimal(5, 2)
+  saves         Int?
+
+  fixture Fixture @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  team    Team    @relation(fields: [teamId], references: [id])
+
+  @@unique([fixtureId, teamId])
+  @@index([teamId])
+  @@map("team_match_stats")
+}
+
+/// ⚠️ Provider reality (§11.5): football-data.org publishes no per-player match
+/// statistics. Everything above the divider is DERIVED by us from the match's
+/// lineup, bench, goals[], bookings[] and substitutions[] arrays — all of which
+/// need the Deep Data plan. Everything below stays null on this provider and
+/// exists only so a richer provider can be adopted later without a migration.
+/// Do not build UI on a null column.
+model PlayerMatchStat {
+  id        String @id @default(cuid())
+  fixtureId String @map("fixture_id")
+  playerId  String @map("player_id")
+  teamId    String @map("team_id")
+
+  // ── Derived from lineup + events. Needs Deep Data. ──
+  started         Boolean @default(false)
+  minutesPlayed   Int     @default(0) @map("minutes_played") // lineup/bench + substitutions
+  goals           Int     @default(0)
+  assists         Int     @default(0)
+  yellowCards     Int     @default(0) @map("yellow_cards")
+  redCards        Int     @default(0) @map("red_cards")
+  penaltiesScored Int     @default(0) @map("penalties_scored")
+  penaltiesMissed Int     @default(0) @map("penalties_missed")
+
+  // ── Not available from football-data.org. Null until a provider swap. ──
+  shots             Int?
+  shotsOnTarget     Int?     @map("shots_on_target")
+  expectedGoals     Decimal? @map("expected_goals") @db.Decimal(5, 2)
+  expectedAssists   Decimal? @map("expected_assists") @db.Decimal(5, 2)
+  passes            Int?
+  keyPasses         Int?     @map("key_passes")
+  tackles           Int?
+  interceptions     Int?
+  duelsWon          Int?     @map("duels_won")
+  dribblesCompleted Int?     @map("dribbles_completed")
+  saves             Int?
+  goalsConceded     Int?     @map("goals_conceded")
+  rating            Decimal? @db.Decimal(4, 2)
+
+  fixture Fixture @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  player  Player  @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([fixtureId, playerId])
+  @@index([playerId])
+  @@index([teamId])
+  @@map("player_match_stats")
+}
+
+/// Denormalised season aggregate, rebuilt by the stats worker after each round.
+/// Exists so player search and leaderboards never scan player_match_stats.
+model PlayerSeasonStat {
+  id       String @id @default(cuid())
+  playerId String @map("player_id")
+  seasonId String @map("season_id")
+  teamId   String @map("team_id")
+
+  appearances     Int      @default(0)
+  starts          Int      @default(0)
+  minutesPlayed   Int      @default(0) @map("minutes_played")
+  goals           Int      @default(0)
+  assists         Int      @default(0)
+  expectedGoals   Decimal? @map("expected_goals") @db.Decimal(6, 2)
+  expectedAssists Decimal? @map("expected_assists") @db.Decimal(6, 2)
+  shots           Int      @default(0)
+  shotsOnTarget   Int      @default(0) @map("shots_on_target")
+  yellowCards     Int      @default(0) @map("yellow_cards")
+  redCards        Int      @default(0) @map("red_cards")
+  cleanSheets     Int      @default(0) @map("clean_sheets")
+  goalsConceded   Int      @default(0) @map("goals_conceded")
+  saves           Int      @default(0)
+  penaltiesScored Int      @default(0) @map("penalties_scored")
+  averageRating   Decimal? @map("average_rating") @db.Decimal(4, 2)
+  computedAt      DateTime @default(now()) @map("computed_at")
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  team   Team   @relation(fields: [teamId], references: [id])
+
+  @@unique([playerId, seasonId, teamId])
+  @@index([seasonId, goals(sort: Desc)])
+  @@index([seasonId, assists(sort: Desc)])
+  @@map("player_season_stats")
+}
+
+/// Club-level season aggregate (club stats requirement).
+model TeamSeasonStat {
+  id           String @id @default(cuid())
+  teamSeasonId String @unique @map("team_season_id")
+
+  played        Int @default(0)
+  won           Int @default(0)
+  drawn         Int @default(0)
+  lost          Int @default(0)
+  goalsFor      Int @default(0) @map("goals_for")
+  goalsAgainst  Int @default(0) @map("goals_against")
+  cleanSheets   Int @default(0) @map("clean_sheets")
+  failedToScore Int @default(0) @map("failed_to_score")
+
+  // Everything above is computed from our own fixture results, so a club's
+  // record, form and goal record are complete regardless of provider plan.
+  // The three below are not. Null in v1.
+  expectedGoalsFor     Decimal? @map("expected_goals_for") @db.Decimal(6, 2) // never available
+  expectedGoalsAgainst Decimal? @map("expected_goals_against") @db.Decimal(6, 2) // never available
+  avgPossession        Decimal? @map("avg_possession") @db.Decimal(5, 2) // Statistic add-on
+
+  yellowCards Int      @default(0) @map("yellow_cards")
+  redCards    Int      @default(0) @map("red_cards")
+  /// Most recent results, newest first: ["W","D","L","W","W"]
+  formLast5   String[] @default([]) @map("form_last5")
+  computedAt  DateTime @default(now()) @map("computed_at")
+
+  teamSeason TeamSeason @relation(fields: [teamSeasonId], references: [id], onDelete: Cascade)
+
+  @@map("team_season_stats")
+}
+
+/// League table snapshot. One row per team per round, so historical tables and
+/// "position after matchday N" are queryable without recomputation.
+model StandingRow {
+  id        String  @id @default(cuid())
+  seasonId  String  @map("season_id")
+  roundId   String? @map("round_id")
+  teamId    String  @map("team_id")
+  /// Set only for the pre-2024/25 UCL group stage. Null for the 36-team
+  /// league phase and for every domestic league.
+  groupName String? @map("group_name")
+
+  position       Int
+  played         Int      @default(0)
+  won            Int      @default(0)
+  drawn          Int      @default(0)
+  lost           Int      @default(0)
+  goalsFor       Int      @default(0) @map("goals_for")
+  goalsAgainst   Int      @default(0) @map("goals_against")
+  goalDifference Int      @default(0) @map("goal_difference")
+  points         Int      @default(0)
+  form           String[] @default([])
+  /// True for the live/current table, false for historical snapshots.
+  isLatest       Boolean  @default(true) @map("is_latest")
+  computedAt     DateTime @default(now()) @map("computed_at")
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  round  Round? @relation(fields: [roundId], references: [id])
+  team   Team   @relation(fields: [teamId], references: [id])
+
+  @@unique([seasonId, roundId, teamId])
+  @@index([seasonId, isLatest, position])
+  @@map("standing_rows")
+}
+
+/// Maps every provider identifier to our internal id. The ONLY place a
+/// provider id is allowed to live. Swapping providers = adding rows here.
+model ExternalRef {
+  id         String         @id @default(cuid())
+  provider   String // "football-data-org", "manual"
+  entity     ExternalEntity
+  externalId String         @map("external_id")
+  internalId String         @map("internal_id")
+  payload    Json? // last raw record, for debugging
+  syncedAt   DateTime       @default(now()) @map("synced_at")
+
+  @@unique([provider, entity, externalId])
+  @@unique([provider, entity, internalId])
+  @@index([entity, internalId])
+  @@map("external_refs")
+}
+
+model IngestJob {
+  id             String          @id @default(cuid())
+  jobType        String          @map("job_type") // "ingest.live", "ingest.match-detail", ...
+  provider       String
+  scopeKey       String?         @map("scope_key") // e.g. "season:<id>" or "fixture:<id>"
+  status         IngestJobStatus @default(QUEUED)
+  recordsRead    Int             @default(0) @map("records_read")
+  recordsWritten Int             @default(0) @map("records_written")
+  error          String?
+  startedAt      DateTime?       @map("started_at")
+  finishedAt     DateTime?       @map("finished_at")
+  createdAt      DateTime        @default(now()) @map("created_at")
+
+  @@index([jobType, status, createdAt])
+  @@map("ingest_jobs")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CONTEXT 2 — IDENTITY
+// ═══════════════════════════════════════════════════════════════════════════
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  /// Argon2id hash. Null for OAuth-only accounts.
+  passwordHash    String?   @map("password_hash")
+  username        String    @unique
+  displayName     String    @map("display_name")
+  avatarUrl       String?   @map("avatar_url")
+  favouriteTeamId String?   @map("favourite_team_id")
+  timezone        String    @default("UTC")
+  locale          String    @default("en")
+  isAdmin         Boolean   @default(false) @map("is_admin")
+  deletedAt       DateTime? @map("deleted_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  identities    AuthIdentity[]
+  sessions      Session[]
+  memberships   LeagueMembership[]
+  ownedLeagues  PredictionLeague[] @relation("LeagueOwner")
+  predictions   Prediction[]
+  boosterUsages BoosterUsage[]
+  standings     StandingEntry[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model AuthIdentity {
+  id             String   @id @default(cuid())
+  userId         String   @map("user_id")
+  provider       String // "google", "apple"
+  providerUserId String   @map("provider_user_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@map("auth_identities")
+}
+
+model Session {
+  id        String   @id // opaque, 256-bit random
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  userAgent String?  @map("user_agent")
+  ipHash    String?  @map("ip_hash") // hashed, never raw IP
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CONTEXT 3 — PREDICTION LEAGUES
+// ═══════════════════════════════════════════════════════════════════════════
+
+model PredictionLeague {
+  id              String           @id @default(cuid())
+  slug            String           @unique
+  name            String
+  description     String?
+  bannerUrl       String?          @map("banner_url")
+  ownerId         String           @map("owner_id")
+  /// The football season this league predicts on.
+  seasonId        String           @map("season_id")
+  visibility      LeagueVisibility @default(UNLISTED)
+  /// Short human-typeable code for joining, e.g. "K7QF2M".
+  joinCode        String?          @unique @map("join_code") @db.VarChar(12)
+  maxMembers      Int?             @map("max_members")
+  /// Members may no longer join after this round number.
+  joinCutoffRound Int?             @map("join_cutoff_round")
+  /// Points a late joiner starts with: NONE | AVERAGE | LOWEST | ZERO
+  lateJoinPolicy  String           @default("ZERO") @map("late_join_policy")
+  isArchived      Boolean          @default(false) @map("is_archived")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  owner       User               @relation("LeagueOwner", fields: [ownerId], references: [id])
+  season      Season             @relation(fields: [seasonId], references: [id])
+  ruleSets    RuleSet[]
+  memberships LeagueMembership[]
+  invites     LeagueInvite[]
+  rounds      LeagueRound[]
+  standings   StandingEntry[]
+
+  @@index([seasonId, visibility, isArchived])
+  @@index([ownerId])
+  @@map("prediction_leagues")
+}
+
+/// IMMUTABLE once any round has been scored under it. Editing rules writes a
+/// new row with version+1; historical scores keep pointing at the old version.
+/// This is the guarantee that makes a friends-league trustworthy: a rules
+/// change can never alter a past leaderboard (§8.7).
+model RuleSet {
+  id       String  @id @default(cuid())
+  leagueId String  @map("league_id")
+  version  Int
+  name     String  @default("House rules")
+  /// Set false when a newer version supersedes this one.
+  isActive Boolean @default(true) @map("is_active")
+  /// True once a PredictionScore references it — blocks in-place edits.
+  isFrozen Boolean @default(false) @map("is_frozen")
+
+  // ── Promoted columns: queried/enforced outside the interpreter ──
+  deadlineStrategy          DeadlineStrategy   @default(ROUND_FIRST_KICKOFF) @map("deadline_strategy")
+  /// Minutes before the reference kickoff that predictions lock. May be
+  /// NEGATIVE — "predict up to 10 minutes after kickoff" is a real house rule.
+  deadlineOffsetMin         Int                @default(0) @map("deadline_offset_min")
+  /// Allow editing a submitted prediction before the deadline.
+  allowEdits                Boolean            @default(true) @map("allow_edits")
+  /// Reveal other members' picks before or only after the deadline.
+  revealPicksBeforeDeadline Boolean            @default(false) @map("reveal_picks_before_deadline")
+  /// Points applied when a member submits nothing.
+  missedPredictionPoints    Int                @default(0) @map("missed_prediction_points")
+  /// Fixtures per round; null = all fixtures in the gameweek.
+  fixturesPerRound          Int?               @map("fixtures_per_round")
+  maxBoostersPerSeason      Int                @default(0) @map("max_boosters_per_season")
+  /// Knockout only: what "the score" means once a match can run past 90'.
+  knockoutScoreBasis        KnockoutScoreBasis @default(NINETY_MINUTES) @map("knockout_score_basis")
+  /// Knockout only: whether a postponed or abandoned fixture voids its
+  /// predictions (true) or is carried forward and scored when played (false).
+  voidPostponedFixtures     Boolean            @default(true) @map("void_postponed_fixtures")
+
+  /// The full declarative rule document. Validated by RuleSetConfigSchema
+  /// (packages/scoring/src/dsl.ts) before it is ever written. See §8.
+  config Json
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  createdById String?  @map("created_by_id")
+
+  league       PredictionLeague  @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  leagueRounds LeagueRound[]
+  scores       PredictionScore[]
+  scoringRuns  ScoringRun[]
+
+  @@unique([leagueId, version])
+  @@index([leagueId, isActive])
+  @@map("rule_sets")
+}
+
+model LeagueMembership {
+  id                 String       @id @default(cuid())
+  leagueId           String       @map("league_id")
+  userId             String       @map("user_id")
+  role               MemberRole   @default(MEMBER)
+  status             MemberStatus @default(ACTIVE)
+  /// Per-league alias, so users can be "The Gaffer" in one league.
+  nickname           String?
+  joinedAt           DateTime     @default(now()) @map("joined_at")
+  leftAt             DateTime?    @map("left_at")
+  /// Round number from which this member's predictions count.
+  effectiveFromRound Int?         @map("effective_from_round")
+
+  league PredictionLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([leagueId, userId])
+  @@index([userId, status])
+  @@index([leagueId, status])
+  @@map("league_memberships")
+}
+
+model LeagueInvite {
+  id          String   @id @default(cuid())
+  leagueId    String   @map("league_id")
+  email       String?
+  token       String   @unique
+  invitedById String   @map("invited_by_id")
+  maxUses     Int      @default(1) @map("max_uses")
+  useCount    Int      @default(0) @map("use_count")
+  expiresAt   DateTime @map("expires_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  league PredictionLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+
+  @@index([leagueId])
+  @@index([expiresAt])
+  @@map("league_invites")
+}
+
+/// A gameweek as played inside one prediction league. Carries that league's
+/// own deadline, status, and the rule-set version it is scored under. Two
+/// leagues on the same gameweek can have entirely different deadlines.
+model LeagueRound {
+  id               String            @id @default(cuid())
+  leagueId         String            @map("league_id")
+  roundId          String            @map("round_id")
+  ruleSetId        String            @map("rule_set_id")
+  /// Sequence within the league (1..N), independent of the football matchday.
+  sequence         Int
+  status           LeagueRoundStatus @default(UPCOMING)
+  /// Resolved absolute deadline. Computed from the rule set at creation and
+  /// recomputed if a kickoff moves while status is UPCOMING.
+  deadlineAt       DateTime          @map("deadline_at")
+  /// True when the underlying Round has not been drawn yet, so the fixture
+  /// list is empty and `deadlineAt` is an estimate. The UI must label it as
+  /// such; the locking job never locks a provisional round (§10.5).
+  isProvisional    Boolean           @default(false) @map("is_provisional")
+  /// Round-wide multiplier, e.g. a double-points final gameweek.
+  pointsMultiplier Decimal           @default(1.0) @map("points_multiplier") @db.Decimal(4, 2)
+  lockedAt         DateTime?         @map("locked_at")
+  scoredAt         DateTime?         @map("scored_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  league        PredictionLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  round         Round            @relation(fields: [roundId], references: [id])
+  ruleSet       RuleSet          @relation(fields: [ruleSetId], references: [id], onDelete: Cascade)
+  fixtures      LeagueFixture[]
+  boosterUsages BoosterUsage[]
+  standings     StandingEntry[]
+  scoringRuns   ScoringRun[]
+
+  @@unique([leagueId, roundId])
+  @@unique([leagueId, sequence])
+  @@index([status, deadlineAt])
+  @@map("league_rounds")
+}
+
+/// Which fixtures this league actually plays this round, and at what weight.
+/// Predictions attach here, never straight to Fixture.
+model LeagueFixture {
+  id            String    @id @default(cuid())
+  leagueRoundId String    @map("league_round_id")
+  fixtureId     String    @map("fixture_id")
+  /// Order shown in the UI.
+  position      Int
+  /// Per-fixture weight, e.g. 2.0 for a nominated derby.
+  weight        Decimal   @default(1.0) @db.Decimal(4, 2)
+  /// Overrides the round deadline when strategy is PER_FIXTURE_KICKOFF.
+  deadlineAt    DateTime? @map("deadline_at")
+  /// Set when the fixture is cancelled and the rules void it.
+  isVoided      Boolean   @default(false) @map("is_voided")
+
+  leagueRound LeagueRound  @relation(fields: [leagueRoundId], references: [id], onDelete: Cascade)
+  fixture     Fixture      @relation(fields: [fixtureId], references: [id])
+  predictions Prediction[]
+
+  @@unique([leagueRoundId, fixtureId])
+  @@index([fixtureId])
+  @@map("league_fixtures")
+}
+
+/// One user's prediction for one fixture in one league.
+model Prediction {
+  id              String           @id @default(cuid())
+  leagueFixtureId String           @map("league_fixture_id")
+  userId          String           @map("user_id")
+  status          PredictionStatus @default(DRAFT)
+  submittedAt     DateTime?        @map("submitted_at")
+  /// Stamped by the server when the deadline passes. Immutable afterwards —
+  /// enforced by the `predictions_locked_guard` trigger as well as by the
+  /// service layer (§7.2, §10.2).
+  lockedAt        DateTime?        @map("locked_at")
+  /// Optional per-fixture booster nomination (banker / double down).
+  boosterUsageId  String?          @unique @map("booster_usage_id")
+  /// Free-text trash talk shown alongside the pick after the deadline.
+  note            String?          @db.VarChar(280)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  leagueFixture LeagueFixture         @relation(fields: [leagueFixtureId], references: [id], onDelete: Cascade)
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  selections    PredictionSelection[]
+  score         PredictionScore?
+  boosterUsage  BoosterUsage?         @relation(fields: [boosterUsageId], references: [id])
+
+  @@unique([leagueFixtureId, userId])
+  @@index([userId, status])
+  @@index([leagueFixtureId])
+  @@map("predictions")
+}
+
+/// One row per market predicted. A prediction may carry several, each scored
+/// independently.
+model PredictionSelection {
+  id           String     @id @default(cuid())
+  predictionId String     @map("prediction_id")
+  market       MarketType
+
+  // Typed slots — only the ones relevant to `market` are populated.
+  homeGoals    Int?          @map("home_goals")
+  awayGoals    Int?          @map("away_goals")
+  outcome      MatchOutcome?
+  booleanValue Boolean?      @map("boolean_value") // BTTS, clean sheet, red card shown
+  numericValue Decimal?      @map("numeric_value") @db.Decimal(6, 2) // over/under line
+  overSelected Boolean?      @map("over_selected") // true = over, false = under
+  playerId     String?       @map("player_id") // goalscorer markets
+  teamId       String?       @map("team_id") // TO_QUALIFY: the side picked to advance
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  prediction Prediction @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+  player     Player?    @relation(fields: [playerId], references: [id])
+  team       Team?      @relation(fields: [teamId], references: [id])
+
+  @@unique([predictionId, market])
+  @@index([playerId])
+  @@map("prediction_selections")
+}
+
+model BoosterUsage {
+  id            String      @id @default(cuid())
+  userId        String      @map("user_id")
+  leagueRoundId String      @map("league_round_id")
+  type          BoosterType
+  /// Multiplier or floor value resolved from the rule set at use time, so a
+  /// later rule change cannot retroactively alter a spent booster.
+  resolvedValue Decimal     @map("resolved_value") @db.Decimal(4, 2)
+  usedAt        DateTime    @default(now()) @map("used_at")
+  /// Cleared if the user retracts before the deadline.
+  revokedAt     DateTime?   @map("revoked_at")
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  leagueRound LeagueRound @relation(fields: [leagueRoundId], references: [id], onDelete: Cascade)
+  prediction  Prediction?
+
+  @@unique([userId, leagueRoundId, type])
+  @@index([leagueRoundId])
+  @@map("booster_usages")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CONTEXT 4 — SCORING
+// ═══════════════════════════════════════════════════════════════════════════
+
+model ScoringRun {
+  id                String           @id @default(cuid())
+  leagueRoundId     String           @map("league_round_id")
+  ruleSetId         String           @map("rule_set_id")
+  status            ScoringRunStatus @default(QUEUED)
+  /// Idempotency key: sha256(leagueRoundId + ruleSetVersion + sorted fixture
+  /// resultVersions). Re-running with unchanged inputs is a no-op, which is
+  /// what makes the pipeline safe to retry aggressively (§9.1).
+  inputHash         String           @map("input_hash")
+  trigger           String // "deadline", "result", "correction", "manual"
+  predictionsScored Int              @default(0) @map("predictions_scored")
+  error             String?
+  startedAt         DateTime?        @map("started_at")
+  finishedAt        DateTime?        @map("finished_at")
+  createdAt         DateTime         @default(now()) @map("created_at")
+
+  leagueRound LeagueRound       @relation(fields: [leagueRoundId], references: [id], onDelete: Cascade)
+  ruleSet     RuleSet           @relation(fields: [ruleSetId], references: [id], onDelete: Cascade)
+  scores      PredictionScore[]
+
+  @@unique([leagueRoundId, inputHash])
+  @@index([status, createdAt])
+  @@map("scoring_runs")
+}
+
+/// The scored outcome of one prediction. `breakdown` names every rule that
+/// fired, which is what makes points explainable and disputes resolvable.
+model PredictionScore {
+  id           String @id @default(cuid())
+  predictionId String @unique @map("prediction_id")
+  ruleSetId    String @map("rule_set_id")
+  scoringRunId String @map("scoring_run_id")
+
+  /// Sum of awards before multipliers.
+  basePoints Decimal @map("base_points") @db.Decimal(8, 2)
+  /// Product of fixture weight x round multiplier x booster multiplier.
+  multiplier Decimal @default(1.0) @db.Decimal(6, 3)
+  /// Final, rounded per the rule set's rounding mode. This is the number that
+  /// enters the standings.
+  points     Decimal @db.Decimal(8, 2)
+
+  isExactScore     Boolean @default(false) @map("is_exact_score")
+  isOutcomeCorrect Boolean @default(false) @map("is_outcome_correct")
+
+  /// [{ ruleId, label, points, group, kind }, ...]
+  breakdown Json
+
+  computedAt DateTime @default(now()) @map("computed_at")
+
+  prediction Prediction @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+  ruleSet    RuleSet    @relation(fields: [ruleSetId], references: [id], onDelete: Cascade)
+  scoringRun ScoringRun @relation(fields: [scoringRunId], references: [id], onDelete: Cascade)
+
+  @@index([scoringRunId])
+  @@map("prediction_scores")
+}
+
+/// Materialised league table for a prediction league, one row per member per
+/// round. Reading a leaderboard is a single indexed scan, never an aggregate.
+model StandingEntry {
+  id            String @id @default(cuid())
+  leagueId      String @map("league_id")
+  leagueRoundId String @map("league_round_id")
+  userId        String @map("user_id")
+
+  roundPoints      Decimal  @map("round_points") @db.Decimal(8, 2)
+  totalPoints      Decimal  @map("total_points") @db.Decimal(10, 2)
+  position         Int
+  previousPosition Int?     @map("previous_position")
+  /// Cumulative tiebreaker counters.
+  exactScores      Int      @default(0) @map("exact_scores")
+  correctOutcomes  Int      @default(0) @map("correct_outcomes")
+  predictionsMade  Int      @default(0) @map("predictions_made")
+  /// Consecutive rounds with at least one correct outcome.
+  currentStreak    Int      @default(0) @map("current_streak")
+  computedAt       DateTime @default(now()) @map("computed_at")
+
+  league      PredictionLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  leagueRound LeagueRound      @relation(fields: [leagueRoundId], references: [id], onDelete: Cascade)
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([leagueRoundId, userId])
+  @@index([leagueId, leagueRoundId, position])
+  @@index([userId])
+  @@map("standing_entries")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  CROSS-CUTTING
+// ═══════════════════════════════════════════════════════════════════════════
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  type      String // "deadline.soon", "round.scored", "league.invite"
+  title     String
+  body      String?
+  /// Deep link target, e.g. "/leagues/abc/rounds/12".
+  linkPath  String?   @map("link_path")
+  data      Json?
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?  @map("actor_id")
+  action     String // "ruleset.create", "round.rescore", "member.remove"
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorId], references: [id])
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorId, createdAt])
+  @@map("audit_logs")
+}

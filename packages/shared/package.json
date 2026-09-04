@@ -1,0 +1,24 @@
+{
+  "name": "@wp/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./env": "./src/env.ts",
+    "./dto/*": "./src/dto/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@wp/config": "workspace:*",
+    "typescript": "^5.7.3"
+  }
+}
