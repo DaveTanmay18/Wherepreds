@@ -59,15 +59,34 @@ You need its URL before Vercel can proxy to it.
 
 **Render → New → Web Service**, pointed at this repo.
 
-| Setting       | Value                                                                                |
-| ------------- | ------------------------------------------------------------------------------------ |
-| Runtime       | Node                                                                                 |
-| Build command | `corepack enable && pnpm install --frozen-lockfile && pnpm --filter @wp/db generate` |
-| Start command | `pnpm --filter @wp/api start`                                                        |
-| Instance type | Free is fine (it sleeps after ~15 min idle; the first request then takes ~1 min)     |
+| Setting       | Value                                                                                          |
+| ------------- | ---------------------------------------------------------------------------------------------- |
+| Runtime       | Node                                                                                           |
+| Build command | `corepack enable && pnpm install --frozen-lockfile --no-prod && pnpm --filter @wp/db generate` |
+| Start command | `pnpm --filter @wp/api start`                                                                  |
+| Instance type | Free is fine (it sleeps after ~15 min idle; the first request then takes ~1 min)               |
 
-`prisma generate` in the build is **not optional** — the client is generated
-into `node_modules`, and without it the API throws on its first query.
+Two flags in that command are load-bearing, and both fail _silently at build
+time_ and loudly at boot:
+
+- **`--no-prod`** — `NODE_ENV=production` is set on the service, and pnpm
+  honours it with a production-only install. That strips `tsx`, which is
+  exactly what `pnpm --filter @wp/api start` runs the server with
+  (`node --import tsx src/index.ts`). Without the flag: green build, then
+  `Cannot find module 'tsx'`.
+- **`prisma generate`** — the client is generated into `node_modules`, so
+  without it the API starts happily and throws on its very first query.
+
+A tidier long-term fix for the first one is to move `tsx` out of
+`devDependencies` in `apps/api/package.json`, since it genuinely is a runtime
+dependency for this start command. `--no-prod` keeps the local setup
+untouched, at the cost of installing eslint and vitest on the server too.
+
+⚠️ Pin the Node version with a **`NODE_VERSION` environment variable**, not
+`.node-version`. `engines.node: ">=22"` in the root `package.json` is a
+_floor_, not a pin, and Render resolves it to the newest release it has — it
+picked **26.8.1**, several majors ahead of the 24.x this is developed against.
+`NODE_VERSION` takes precedence over both.
 
 The API binds `$PORT` when the platform sets one, falling back to `API_PORT`
 locally, so no port configuration is needed.
@@ -110,6 +129,13 @@ output directory. Root directory stays the repo root.
 
 No environment variables are needed on Vercel. The web app has no
 `import.meta.env` usage at all; everything reaches it through the proxy.
+
+⚠️ The install command carries `--no-prod` for the same reason Render's does.
+Vercel sets `NODE_ENV=production` during a build, and pnpm honours that with a
+prod-only install — which would strip `vite`, `typescript` and
+`@vitejs/plugin-react`, every one of which is a devDependency of `@wp/web` and
+required to build it. The failure reads `vite: not found`, which points at the
+wrong thing entirely.
 
 ### 4. Close the loop
 

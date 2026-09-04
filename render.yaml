@@ -12,10 +12,24 @@ services:
     # ⚠️ `prisma generate` is NOT optional. The client is generated into
     # node_modules, so without this the API throws on its very first query
     # with a build that otherwise looks completely successful.
-    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @wp/db generate
-    startCommand: pnpm --filter @wp/api start
+    # ⚠️ NOT `corepack enable`. Corepack writes its shims into /usr/bin, which
+    # is read-only on Render -- the build dies with EROFS before it starts.
+    # `npx pnpm@<version>` pins the same version without touching /usr/bin.
+    #
+    # ⚠️ --no-prod is NOT optional either. NODE_ENV=production is set below and
+    # pnpm honours it with a prod-only install, which strips tsx -- the very
+    # thing the start command runs the server with. Without it the build goes
+    # green and the service dies at boot on "Cannot find module 'tsx'".
+    buildCommand: npx --yes pnpm@9.15.9 install --frozen-lockfile --no-prod && npx --yes pnpm@9.15.9 --filter @wp/db generate
+    startCommand: npx --yes pnpm@9.15.9 --filter @wp/api start
     healthCheckPath: /api/v1/health
     envVars:
+      # ⚠️ Highest-precedence Node pin on Render. `engines.node: ">=22"` in the
+      # root package.json is a FLOOR, not a pin, so Render resolved it to the
+      # newest release available (26.8.1) -- several majors ahead of the 24.x
+      # this is developed and tested on. Match the dev runtime instead.
+      - key: NODE_VERSION
+        value: '24'
       - key: NODE_ENV
         # This is what flips the session cookie to Secure (session.ts).
         value: production
@@ -34,6 +48,20 @@ services:
       # The Vercel URL. Fill in after the web app is deployed.
       - key: WEB_BASE_URL
         sync: false
+      # The API needs this even though it never calls the provider: the rules
+      # editor asks which markets the plan can score, and that check runs
+      # footballEnvSchema.parse(process.env) INSIDE the request handler
+      # (routes/v1/rules.ts, services/rules.service.ts). Omit it and the
+      # service boots green, then 500s the moment anyone opens the scoring
+      # rules or creates a league.
+      - key: FOOTBALL_API_TOKEN
+        sync: false
+      # Must match the worker's flags, or the API offers markets that nothing
+      # can score. Both false on the free plan (architecture.md 11.5).
+      - key: FOOTBALL_CAP_DEEP_DATA
+        value: 'false'
+      - key: FOOTBALL_CAP_STATISTICS
+        value: 'false'
       # ⚠️ Must be the full https:// URL, not a bare host. The env schema
       # validates it with z.string().url() and parseEnv exits the process on
       # failure — Render's `fromService ... property: host` yields a hostname
