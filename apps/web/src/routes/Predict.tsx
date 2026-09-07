@@ -43,6 +43,9 @@ export function PredictRoute() {
   const [rejected, setRejected] = useState<Record<string, string>>({});
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  /** Which fixtures have the note field open. Notes are optional and rarely
+      used, so they stay out of the way until asked for. */
+  const [openNotes, setOpenNotes] = useState<Record<string, boolean>>({});
   const hydrated = useRef(false);
 
   const round = data?.round;
@@ -231,12 +234,62 @@ export function PredictRoute() {
             <li
               key={f.leagueFixtureId}
               style={{
+                // ⚠️ The CARD is capped, not just the grid inside it. Capping
+                // only the inner content left a full-width band with a narrow
+                // island floating in the middle of it — the card has to be the
+                // same size as the thing it contains.
+                width: '100%',
+                maxWidth: 560,
+                margin: '0 auto',
                 padding: 'var(--s3)',
                 background: 'var(--surface-raised)',
                 border: `1px solid ${rejected[f.leagueFixtureId] ? 'var(--negative)' : 'var(--border)'}`,
                 borderRadius: 'var(--radius-md)',
               }}
             >
+              {/* Context first: when it kicks off, and what booster is on it.
+                  This was two separate full-width rows — one at the very
+                  bottom of the card, which is the last place you look for the
+                  thing that tells you how long you have left. */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 'var(--s2)',
+                  marginBottom: 'var(--s2)',
+                  minHeight: 24,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    color: locked ? 'var(--negative)' : 'var(--text-muted)',
+                  }}
+                >
+                  {locked
+                    ? f.result
+                      ? `Locked · finished ${f.result.home}–${f.result.away}`
+                      : 'Locked'
+                    : new Date(f.kickoffAt).toLocaleString(undefined, {
+                        weekday: 'short',
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                </span>
+                {!locked && (
+                  <FixtureBoosterButton
+                    budget={budget.data?.boosters ?? []}
+                    used={placed.data?.used ?? []}
+                    leagueFixtureId={f.leagueFixtureId}
+                    disabled={locked}
+                    onPlace={(type, id) => boosters.place.mutate({ type, leagueFixtureId: id })}
+                    onRevoke={(type) => boosters.revoke.mutate(type)}
+                  />
+                )}
+              </div>
               {/* ⚠️ Capped and centred. A bare `1fr auto 1fr` grid works at
                   360px but on a 1120px container the 1fr columns balloon and
                   fling the team names to the far edges, leaving the score
@@ -329,65 +382,57 @@ export function PredictRoute() {
                 </div>
               )}
 
-              {!locked && (
-                <div style={{ marginTop: 'var(--s3)' }}>
-                  <FixtureBoosterButton
-                    budget={budget.data?.boosters ?? []}
-                    used={placed.data?.used ?? []}
-                    leagueFixtureId={f.leagueFixtureId}
-                    disabled={locked}
-                    onPlace={(type, id) => boosters.place.mutate({ type, leagueFixtureId: id })}
-                    onRevoke={(type) => boosters.revoke.mutate(type)}
-                  />
-                </div>
-              )}
-
               {/* Prediction note (task P5-07). Shown to the league only AFTER
                   the deadline, alongside the pick — trash talk is only fun
-                  when nobody could have read it in time to react. */}
-              {!locked && (
-                <input
-                  value={notes[f.leagueFixtureId] ?? ''}
-                  onChange={(e) =>
-                    setNotes((n) => ({ ...n, [f.leagueFixtureId]: e.target.value.slice(0, 280) }))
-                  }
-                  placeholder="Say something (optional)"
-                  aria-label={`Note for ${f.homeTeam.shortName} v ${f.awayTeam.shortName}`}
-                  maxLength={280}
-                  style={{
-                    width: '100%',
-                    minHeight: 40,
-                    marginTop: 'var(--s2)',
-                    padding: '0 var(--s3)',
-                    fontSize: '16px',
-                    color: 'var(--text)',
-                    background: 'var(--bg)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-md)',
-                  }}
-                />
-              )}
+                  when nobody could have read it in time to react.
 
-              <p
-                style={{
-                  margin: 'var(--s2) 0 0',
-                  textAlign: 'center',
-                  fontSize: 'var(--text-xs)',
-                  color: locked ? 'var(--negative)' : 'var(--text-muted)',
-                }}
-              >
-                {locked
-                  ? f.result
-                    ? `Locked · finished ${f.result.home}–${f.result.away}`
-                    : 'Locked'
-                  : new Date(f.kickoffAt).toLocaleString(undefined, {
-                      weekday: 'short',
-                      day: 'numeric',
-                      month: 'short',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-              </p>
+                  ⚠️ Collapsed by default. Rendered always-open, a full-width
+                  empty text field was the loudest element in the card and drew
+                  the eye away from the only thing that scores points. */}
+              {!locked &&
+                (openNotes[f.leagueFixtureId] || notes[f.leagueFixtureId] ? (
+                  <input
+                    autoFocus={openNotes[f.leagueFixtureId]}
+                    value={notes[f.leagueFixtureId] ?? ''}
+                    onChange={(e) =>
+                      setNotes((n) => ({ ...n, [f.leagueFixtureId]: e.target.value.slice(0, 280) }))
+                    }
+                    placeholder="Say something (optional)"
+                    aria-label={`Note for ${f.homeTeam.shortName} v ${f.awayTeam.shortName}`}
+                    maxLength={280}
+                    style={{
+                      width: '100%',
+                      minHeight: 40,
+                      marginTop: 'var(--s3)',
+                      padding: '0 var(--s3)',
+                      // 16px exactly: anything smaller makes iOS zoom the page
+                      // on focus (§14.5).
+                      fontSize: '16px',
+                      color: 'var(--text)',
+                      background: 'var(--bg)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-md)',
+                    }}
+                  />
+                ) : (
+                  <div style={{ marginTop: 'var(--s2)', textAlign: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenNotes((o) => ({ ...o, [f.leagueFixtureId]: true }))}
+                      style={{
+                        minHeight: 32,
+                        padding: '0 var(--s2)',
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--text-muted)',
+                        fontSize: 'var(--text-xs)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      + Add a note
+                    </button>
+                  </div>
+                ))}
 
               {rejected[f.leagueFixtureId] && (
                 <p
@@ -441,9 +486,14 @@ function TeamLabel({ team, align }: { team: RoundFixture['homeTeam']; align: 'le
         display: 'flex',
         alignItems: 'center',
         gap: 'var(--s2)',
-        // Both labels hug the score in the middle, so the two team names sit
-        // next to what they refer to rather than at the card's outer edges.
-        justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
+        // ⚠️ flex-end on BOTH sides, which is not a typo. The away label is
+        // `row-reverse`, so its main axis runs right-to-left and `flex-start`
+        // packs it against the card's OUTER edge — leaving a gap between the
+        // stepper and the crest that grew or shrank with the length of the
+        // club name, so no two fixtures lined up. `flex-end` packs each label
+        // against the score in the middle, so both crests sit a fixed
+        // distance from the centre and every row is a mirror of itself.
+        justifyContent: 'flex-end',
         flexDirection: align === 'right' ? 'row' : 'row-reverse',
         fontSize: 'var(--text-sm)',
         minWidth: 0,

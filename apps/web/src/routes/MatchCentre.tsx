@@ -320,7 +320,9 @@ function TeamSide({ team, align }: { team: Team; align: 'left' | 'right' }) {
         display: 'flex',
         alignItems: 'center',
         gap: 'var(--s2)',
-        justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
+        // See the note in Predict.tsx: row-reverse inverts the main axis, so
+        // flex-end is what pins the away label to the score in the middle.
+        justifyContent: 'flex-end',
         flexDirection: align === 'right' ? 'row' : 'row-reverse',
         minWidth: 0,
       }}

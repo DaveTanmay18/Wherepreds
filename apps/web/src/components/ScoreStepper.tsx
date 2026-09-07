@@ -17,10 +17,18 @@ export function ScoreStepper(props: {
   return (
     <div
       style={{
+        // ⚠️ ONE control, not three stacked ones. Rendered as loose children
+        // the +/- buttons read as floating chrome with no relationship to the
+        // number between them — especially on a wide screen, where the eye has
+        // nothing to bind them to. A shared border and a common width make the
+        // three parts a single object.
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
-        gap: 'var(--s1)',
+        width: 56,
+        background: 'var(--surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-md)',
+        overflow: 'hidden',
         opacity: props.disabled ? 0.55 : 1,
       }}
     >
@@ -34,10 +42,14 @@ export function ScoreStepper(props: {
         aria-label={`${props.label} goals`}
         className="tnum"
         style={{
+          padding: 'var(--s1) 0',
           fontSize: 'var(--text-2xl)',
           fontWeight: 700,
-          minWidth: 40,
+          lineHeight: 1.1,
           textAlign: 'center',
+          background: 'var(--surface-raised)',
+          borderTop: '1px solid var(--border)',
+          borderBottom: '1px solid var(--border)',
           color: props.value === null ? 'var(--text-muted)' : 'var(--text)',
         }}
       >
@@ -66,18 +78,17 @@ function StepButton(props: {
       disabled={props.disabled}
       onClick={props.onClick}
       style={{
-        // 56px: the §14.1 floor is 44, but these are the most-tapped controls
-        // in the product and deserve more.
-        width: 56,
+        // Full width of the stepper, and 44px tall — the §14.5 tap-target
+        // floor. Borders belong to the parent so the seams line up.
+        width: '100%',
         height: 44,
         fontSize: 'var(--text-xl)',
         lineHeight: 1,
-        background: 'var(--surface)',
+        background: 'transparent',
         color: 'var(--text)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-md)',
+        border: 'none',
         cursor: props.disabled ? 'not-allowed' : 'pointer',
-        opacity: props.disabled ? 0.4 : 1,
+        opacity: props.disabled ? 0.35 : 1,
       }}
     >
       {props.symbol}
