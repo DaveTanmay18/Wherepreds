@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '@wp/db';
 import { getRedis } from '../../lib/redis.js';
+import { adminRouter } from './admin.js';
 import { authRouter } from './auth.js';
 import { footballRouter } from './football.js';
 import { leagueRouter } from './leagues.js';
@@ -52,3 +53,4 @@ v1Router.use('/', boosterRouter);
 v1Router.use('/', notificationRouter);
 v1Router.use('/', standingsRouter);
 v1Router.use('/', footballRouter);
+v1Router.use('/', adminRouter);

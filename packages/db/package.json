@@ -18,6 +18,7 @@
     "migrate:reset": "dotenv -e ../../.env -- prisma migrate reset",
     "studio": "dotenv -e ../../.env -- prisma studio",
     "seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
+    "make-admin": "dotenv -e ../../.env -- tsx prisma/make-admin.ts",
     "typecheck": "tsc --noEmit"
   },
   "prisma": {

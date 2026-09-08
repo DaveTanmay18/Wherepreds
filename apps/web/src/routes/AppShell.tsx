@@ -36,6 +36,20 @@ export function AppShell() {
           >
             Football
           </Link>
+          {/* Shown only to admins — but the link is a shortcut, not a gate.
+              The API rejects these routes for everyone else regardless. */}
+          {user?.isAdmin && (
+            <Link
+              to="/admin"
+              style={{
+                color: 'var(--text-muted)',
+                textDecoration: 'none',
+                fontSize: 'var(--text-sm)',
+              }}
+            >
+              Admin
+            </Link>
+          )}
         </nav>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s3)' }}>
           <NotificationBell />

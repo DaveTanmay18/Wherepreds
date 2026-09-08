@@ -1,6 +1,8 @@
 import { createBrowserRouter, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useSession } from './lib/auth.js';
 import { Loading } from './components/ui.jsx';
+import { AdminRoute } from './routes/Admin.js';
+import { AdminLeagueRoute } from './routes/AdminLeague.js';
 import { AppShell } from './routes/AppShell.js';
 import { DashboardRoute } from './routes/Dashboard.js';
 import { BracketRoute } from './routes/Bracket.js';
@@ -78,6 +80,10 @@ export const router = createBrowserRouter([
           { path: '/football/fixture/:id', element: <MatchCentreRoute /> },
           { path: '/football/:slug/bracket', element: <BracketRoute /> },
           { path: '/football/:slug', element: <CompetitionRoute /> },
+          // Platform admin. The API enforces `isAdmin` on every one of these
+          // endpoints — routing here is convenience, never access control.
+          { path: '/admin', element: <AdminRoute /> },
+          { path: '/admin/leagues/:slug', element: <AdminLeagueRoute /> },
         ],
       },
     ],
