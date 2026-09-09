@@ -12,6 +12,7 @@ import {
 } from '../lib/predictions.js';
 import { QuickChips, ScoreStepper } from '../components/ScoreStepper.jsx';
 import {
+  FixtureBoosterBadge,
   FixtureBoosterButton,
   RoundBoosterBar,
   useBoosterBudget,
@@ -279,7 +280,14 @@ export function PredictRoute() {
                         minute: '2-digit',
                       })}
                 </span>
-                {!locked && (
+                {/* Locked: the control is gone, but the marker stays — the
+                    banker is most worth seeing once it can no longer move. */}
+                {locked ? (
+                  <FixtureBoosterBadge
+                    used={placed.data?.used ?? []}
+                    leagueFixtureId={f.leagueFixtureId}
+                  />
+                ) : (
                   <FixtureBoosterButton
                     budget={budget.data?.boosters ?? []}
                     used={placed.data?.used ?? []}

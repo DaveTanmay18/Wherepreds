@@ -140,6 +140,49 @@ export function RoundBoosterBar(props: {
   );
 }
 
+/**
+ * Read-only marker for a booster already placed on this fixture.
+ *
+ * ⚠️ Rendered whether or not the fixture is locked. The placement CONTROL
+ * necessarily disappears at the deadline, but "which match did I bank?" is a
+ * question people ask most once they can no longer change the answer — during
+ * the match, and afterwards when the points land. Hiding the marker with the
+ * control left no way to tell.
+ */
+export function FixtureBoosterBadge(props: { used: BoosterUse[]; leagueFixtureId: string }) {
+  const on = props.used.filter(
+    (u) => u.scope === 'fixture' && u.leagueFixtureId === props.leagueFixtureId,
+  );
+  if (on.length === 0) return null;
+
+  return (
+    <span style={{ display: 'inline-flex', gap: 'var(--s1)' }}>
+      {on.map((u) => (
+        <span
+          key={u.type}
+          title={`${BOOSTER_LABELS[u.type] ?? u.type} is on this match`}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            padding: '2px var(--s2)',
+            background: 'var(--accent)',
+            color: 'var(--accent-text)',
+            borderRadius: 999,
+            fontSize: 'var(--text-xs)',
+            fontWeight: 700,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {/* Icon AND text: colour alone is never the only signal (§14.1). */}
+          <span aria-hidden>⚡</span>
+          {BOOSTER_LABELS[u.type] ?? u.type} ×{u.value}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /** Fixture-level booster control, rendered on the match it applies to. */
 export function FixtureBoosterButton(props: {
   budget: BoosterBudget[];
@@ -175,10 +218,13 @@ export function FixtureBoosterButton(props: {
             style={{
               minHeight: 36,
               padding: '0 var(--s3)',
-              background: onThis ? 'var(--accent-weak)' : 'transparent',
+              // FILLED when placed here, not merely tinted. Against a row of
+              // identical outline chips a faint background reads as "slightly
+              // different", not "this is the one".
+              background: onThis ? 'var(--accent)' : 'transparent',
               // A booster placed on ANOTHER match is dimmed rather than
               // hidden — otherwise "where did my banker go?" has no answer.
-              color: onThis ? 'var(--accent)' : 'var(--text-muted)',
+              color: onThis ? 'var(--accent-text)' : 'var(--text-muted)',
               border: `1px solid ${onThis ? 'var(--accent)' : 'var(--border)'}`,
               borderRadius: 999,
               fontSize: 'var(--text-xs)',
