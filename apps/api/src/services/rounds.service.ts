@@ -134,7 +134,10 @@ export async function materialiseRounds(
     await prisma.leagueRound.createMany({ data: toCreate, skipDuplicates: true });
   }
 
-  await materialiseAllFixtures(leagueId, league.seasonId, ruleSet.fixturesPerRound);
+  await materialiseAllFixtures(leagueId, league.seasonId, ruleSet.fixturesPerRound, {
+    strategy: ruleSet.deadlineStrategy,
+    offsetMinutes: ruleSet.deadlineOffsetMin,
+  });
 
   const CHUNK = 25;
   for (let i = 0; i < toUpdate.length; i += CHUNK) {
@@ -169,6 +172,13 @@ export async function materialiseAllFixtures(
   leagueId: string,
   seasonId: string,
   fixturesPerRound: number | null,
+  /**
+   * ⚠️ REQUIRED for PER_FIXTURE_KICKOFF. Without it every LeagueFixture is
+   * written with a null deadline, `checkDeadlines` falls back to the ROUND
+   * deadline, and a league whose whole point is "each match closes at its own
+   * kickoff" closes every match the moment the first one starts.
+   */
+  deadline: { strategy: DeadlineStrategy; offsetMinutes: number },
 ): Promise<number> {
   const rounds = await prisma.leagueRound.findMany({
     where: { leagueId, status: LeagueRoundStatus.UPCOMING },
@@ -179,24 +189,30 @@ export async function materialiseAllFixtures(
   const fixtures = await prisma.fixture.findMany({
     where: { seasonId, roundId: { in: rounds.map((r) => r.roundId) } },
     orderBy: { kickoffAt: 'asc' },
-    select: { id: true, roundId: true },
+    select: { id: true, roundId: true, kickoffAt: true },
   });
 
-  const byRound = new Map<string, string[]>();
+  const byRound = new Map<string, { id: string; kickoffAt: Date }[]>();
   for (const f of fixtures) {
     if (!f.roundId) continue;
     const list = byRound.get(f.roundId) ?? [];
-    list.push(f.id);
+    list.push({ id: f.id, kickoffAt: f.kickoffAt });
     byRound.set(f.roundId, list);
   }
 
+  const perFixture = deadline.strategy === DeadlineStrategy.PER_FIXTURE_KICKOFF;
+  const offsetMs = deadline.offsetMinutes * 60_000;
+
   const rows = rounds.flatMap((lr) => {
-    const ids = byRound.get(lr.roundId) ?? [];
-    const chosen = fixturesPerRound ? ids.slice(0, fixturesPerRound) : ids;
-    return chosen.map((fixtureId, i) => ({
+    const all = byRound.get(lr.roundId) ?? [];
+    const chosen = fixturesPerRound ? all.slice(0, fixturesPerRound) : all;
+    return chosen.map((f, i) => ({
       leagueRoundId: lr.id,
-      fixtureId,
+      fixtureId: f.id,
       position: i + 1,
+      // Only PER_FIXTURE_KICKOFF gives a fixture its own deadline; every other
+      // strategy leaves this null and defers to the round (§10.1).
+      deadlineAt: perFixture ? new Date(f.kickoffAt.getTime() - offsetMs) : null,
     }));
   });
 

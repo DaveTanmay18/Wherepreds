@@ -152,6 +152,20 @@ beforeAll(async () => {
 }, 240_000);
 
 afterAll(async () => {
+  /**
+   * ⚠️ Predictions and booster usages go FIRST, explicitly.
+   *
+   * Deleting the league cascades to BoosterUsage, and the SET NULL that puts
+   * on `prediction.booster_usage_id` is an UPDATE — which the locked-
+   * prediction trigger refuses, correctly, once the round has locked. The
+   * cascade order is not guaranteed, so this only failed intermittently.
+   * DELETE is not guarded (the trigger is BEFORE UPDATE), so removing the
+   * predictions outright sidesteps the update entirely.
+   */
+  await prisma.prediction.deleteMany({
+    where: { leagueFixture: { leagueRound: { leagueId } } },
+  });
+  await prisma.boosterUsage.deleteMany({ where: { leagueRound: { leagueId } } });
   await prisma.predictionLeague.deleteMany({ where: { id: leagueId } });
   await prisma.fixture.deleteMany({ where: { id: { in: fixtureIds } } });
   await prisma.round.deleteMany({ where: { id: roundId } });

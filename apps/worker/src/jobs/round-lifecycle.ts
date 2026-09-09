@@ -21,11 +21,24 @@ export async function recomputeDeadlines(log: Logger): Promise<{ updated: number
     where: { status: LeagueRoundStatus.UPCOMING, isProvisional: false },
     include: {
       ruleSet: { select: { deadlineStrategy: true, deadlineOffsetMin: true } },
-      fixtures: { include: { fixture: { select: { kickoffAt: true } } } },
+      fixtures: {
+        select: { id: true, deadlineAt: true, fixture: { select: { kickoffAt: true } } },
+      },
     },
   });
 
   const updates: { id: string; deadlineAt: Date }[] = [];
+  /**
+   * ⚠️ Per-fixture deadlines are maintained here too, not just the round's.
+   *
+   * A PER_FIXTURE_KICKOFF league whose LeagueFixture rows have a null deadline
+   * silently falls back to the ROUND deadline in checkDeadlines — so every
+   * match in the round closes when the FIRST one kicks off, which is the exact
+   * opposite of what the rule promises. That happens whenever the strategy is
+   * changed after the fixtures were attached, so it has to be repaired on a
+   * schedule rather than only at creation time.
+   */
+  const fixtureUpdates: { id: string; deadlineAt: Date | null }[] = [];
 
   for (const r of rounds) {
     if (r.fixtures.length === 0) continue;
@@ -45,6 +58,32 @@ export async function recomputeDeadlines(log: Logger): Promise<{ updated: number
         'deadline moved with the kickoff',
       );
     }
+
+    const perFixture = r.ruleSet.deadlineStrategy === 'PER_FIXTURE_KICKOFF';
+    for (const lf of r.fixtures) {
+      // Null for every other strategy, so switching AWAY from per-fixture
+      // clears deadlines that would otherwise keep closing matches early.
+      const want = perFixture ? new Date(lf.fixture.kickoffAt.getTime() - offsetMs) : null;
+      const have = lf.deadlineAt;
+      if (want?.getTime() !== have?.getTime()) {
+        fixtureUpdates.push({ id: lf.id, deadlineAt: want });
+      }
+    }
+  }
+
+  if (fixtureUpdates.length) {
+    const CHUNK = 50;
+    for (let i = 0; i < fixtureUpdates.length; i += CHUNK) {
+      await prisma.$transaction(
+        fixtureUpdates.slice(i, i + CHUNK).map((u) =>
+          prisma.leagueFixture.update({
+            where: { id: u.id },
+            data: { deadlineAt: u.deadlineAt },
+          }),
+        ),
+      );
+    }
+    log.info({ fixtures: fixtureUpdates.length }, 'per-fixture deadlines repaired');
   }
 
   if (updates.length) {

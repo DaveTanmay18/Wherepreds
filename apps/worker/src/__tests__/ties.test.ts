@@ -92,7 +92,7 @@ afterAll(async () => {
 describe('tie resolution', () => {
   it('decides on aggregate', async () => {
     const season = await prisma.season.findFirstOrThrow({
-      where: { competition: { slug: 'champions-league' }, isCurrent: true },
+      where: { competition: { slug: 'champions-league' }, startYear: 2025 },
     });
     seasonId = season.id;
 
@@ -198,10 +198,20 @@ describe('tie resolution', () => {
   });
 });
 
+/**
+ * ⚠️ Pinned to startYear 2025, NOT `isCurrent`.
+ *
+ * This is a golden test over a SETTLED bracket — every tie resolved, one final
+ * decided. `isCurrent` follows the calendar, so the moment 2026/27 was
+ * ingested these assertions started running against a season whose knockout
+ * rounds have not been drawn yet, and failed for a reason that had nothing to
+ * do with tie resolution. A test about a specific historical season must name
+ * that season.
+ */
 describe('the real 2025/26 Champions League bracket', () => {
   it('resolves every tie with no ambiguity left', async () => {
     const season = await prisma.season.findFirstOrThrow({
-      where: { competition: { slug: 'champions-league' }, isCurrent: true },
+      where: { competition: { slug: 'champions-league' }, startYear: 2025 },
     });
 
     const ties = await prisma.tie.findMany({
@@ -233,7 +243,7 @@ describe('the real 2025/26 Champions League bracket', () => {
 
   it('has exactly one final, decided', async () => {
     const season = await prisma.season.findFirstOrThrow({
-      where: { competition: { slug: 'champions-league' }, isCurrent: true },
+      where: { competition: { slug: 'champions-league' }, startYear: 2025 },
     });
     const finals = await prisma.tie.findMany({
       where: { seasonId: season.id, round: { type: RoundType.FINAL } },

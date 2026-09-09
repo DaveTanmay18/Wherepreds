@@ -13,6 +13,7 @@ const owner = {
   id: '',
 };
 let slug = '';
+let seq = 1;
 let fixtureIds: string[] = [];
 
 beforeAll(async () => {
@@ -34,8 +35,25 @@ beforeAll(async () => {
     .send({ name: `Boost ${stamp}`, seasonId, presetId: 'classic' });
   slug = league.body.league.slug;
 
+  /**
+   * ⚠️ The first round with a deadline still in the FUTURE, not round 1.
+   *
+   * Hardcoding round 1 made this suite a time bomb: it passed until the
+   * season's opening matchday kicked off, then every booster test began
+   * failing with `deadline-passed` — a real rule, correctly enforced, against
+   * a fixture that had become historical. Boosters are a pre-deadline
+   * decision, so the test has to pick a round that is genuinely still open.
+   */
+  const open = await prisma.leagueRound.findFirst({
+    where: { league: { slug }, status: 'UPCOMING', deadlineAt: { gt: new Date() } },
+    orderBy: { sequence: 'asc' },
+    select: { sequence: true },
+  });
+  if (!open) throw new Error('No round with a future deadline — the season data is exhausted.');
+  seq = open.sequence;
+
   const round = await request(app)
-    .get(`/api/v1/leagues/${slug}/rounds/1`)
+    .get(`/api/v1/leagues/${slug}/rounds/${seq}`)
     .set('Cookie', owner.cookie);
   fixtureIds = round.body.round.fixtures.map((f: { leagueFixtureId: string }) => f.leagueFixtureId);
 }, 180_000);
@@ -67,7 +85,7 @@ describe('booster budget', () => {
 describe('using a booster', () => {
   it('nominates a match', async () => {
     const res = await request(app)
-      .post(`/api/v1/leagues/${slug}/rounds/1/booster`)
+      .post(`/api/v1/leagues/${slug}/rounds/${seq}/booster`)
       .set('Cookie', owner.cookie)
       .send({ type: 'BANKER', leagueFixtureId: fixtureIds[0] });
 
@@ -88,13 +106,13 @@ describe('using a booster', () => {
   it('MOVES rather than errors when re-nominated in the same round', async () => {
     // Changing your mind before the deadline is normal, not a mistake.
     const res = await request(app)
-      .post(`/api/v1/leagues/${slug}/rounds/1/booster`)
+      .post(`/api/v1/leagues/${slug}/rounds/${seq}/booster`)
       .set('Cookie', owner.cookie)
       .send({ type: 'BANKER', leagueFixtureId: fixtureIds[1] });
     expect(res.status).toBe(201);
 
     const used = await request(app)
-      .get(`/api/v1/leagues/${slug}/rounds/1/boosters`)
+      .get(`/api/v1/leagues/${slug}/rounds/${seq}/boosters`)
       .set('Cookie', owner.cookie);
     expect(used.body.used).toHaveLength(1);
     expect(used.body.used[0].leagueFixtureId).toBe(fixtureIds[1]);
@@ -110,7 +128,7 @@ describe('using a booster', () => {
 
   it('refuses a booster the league does not offer', async () => {
     const res = await request(app)
-      .post(`/api/v1/leagues/${slug}/rounds/1/booster`)
+      .post(`/api/v1/leagues/${slug}/rounds/${seq}/booster`)
       .set('Cookie', owner.cookie)
       .send({ type: 'TRIPLE_POINTS', leagueFixtureId: fixtureIds[0] });
     expect(res.status).toBe(409);
@@ -119,7 +137,7 @@ describe('using a booster', () => {
 
   it('refuses a fixture-level booster with no fixture', async () => {
     const res = await request(app)
-      .post(`/api/v1/leagues/${slug}/rounds/1/booster`)
+      .post(`/api/v1/leagues/${slug}/rounds/${seq}/booster`)
       .set('Cookie', owner.cookie)
       .send({ type: 'BANKER' });
     expect(res.status).toBe(409);
@@ -133,7 +151,7 @@ describe('using a booster', () => {
     const foreign = other.body.round.fixtures[0].leagueFixtureId;
 
     const res = await request(app)
-      .post(`/api/v1/leagues/${slug}/rounds/1/booster`)
+      .post(`/api/v1/leagues/${slug}/rounds/${seq}/booster`)
       .set('Cookie', owner.cookie)
       .send({ type: 'BANKER', leagueFixtureId: foreign });
     expect(res.status).toBe(404);
@@ -143,7 +161,7 @@ describe('using a booster', () => {
 describe('revoking', () => {
   it('returns the use to the budget', async () => {
     const del = await request(app)
-      .delete(`/api/v1/leagues/${slug}/rounds/1/booster/BANKER`)
+      .delete(`/api/v1/leagues/${slug}/rounds/${seq}/booster/BANKER`)
       .set('Cookie', owner.cookie);
     expect(del.status).toBe(204);
 
@@ -158,14 +176,14 @@ describe('revoking', () => {
 
   it('detaches it from the prediction', async () => {
     const used = await request(app)
-      .get(`/api/v1/leagues/${slug}/rounds/1/boosters`)
+      .get(`/api/v1/leagues/${slug}/rounds/${seq}/boosters`)
       .set('Cookie', owner.cookie);
     expect(used.body.used).toHaveLength(0);
   });
 
   it('404s when nothing is placed', async () => {
     const res = await request(app)
-      .delete(`/api/v1/leagues/${slug}/rounds/1/booster/BANKER`)
+      .delete(`/api/v1/leagues/${slug}/rounds/${seq}/booster/BANKER`)
       .set('Cookie', owner.cookie);
     expect(res.status).toBe(404);
   });
@@ -174,7 +192,7 @@ describe('revoking', () => {
 describe('the value is snapshotted, not looked up later (§6)', () => {
   it('keeps a spent booster at its original value after a rules change', async () => {
     await request(app)
-      .post(`/api/v1/leagues/${slug}/rounds/1/booster`)
+      .post(`/api/v1/leagues/${slug}/rounds/${seq}/booster`)
       .set('Cookie', owner.cookie)
       .send({ type: 'BANKER', leagueFixtureId: fixtureIds[0] });
 
