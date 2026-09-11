@@ -46,7 +46,13 @@ export type RuleConfig = {
   awards: { id: string; label: string; points: number; group: string | null }[];
   multipliers: { id: string; label: string; factor: number }[];
   tiebreakers: string[];
-  boosters: { type: string; value: number; usesPerSeason: number }[];
+  boosters: {
+    type: string;
+    value: number;
+    usesPerSeason: number;
+    /** Points lost when a boosted prediction scores nothing. 0 = risk-free. */
+    penaltyIfWrong?: number;
+  }[];
 };
 
 export type Member = {

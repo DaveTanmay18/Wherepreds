@@ -25,10 +25,22 @@ standingsRouter.get(
   async (req, res) => {
     const { roundSequence } = req.query as unknown as { roundSequence?: number };
 
+    /**
+     * ⚠️ The latest round actually PLAYED, not the latest with a standings row.
+     *
+     * rebuildStandings carries each member's running total forward into every
+     * remaining round of the season, so the newest row belongs to a fixture
+     * list nobody has predicted yet — where `roundPoints` is legitimately 0.
+     * Reading that row made the table report "0 this round" for everyone, and
+     * `throughRound` claimed Matchday 8 in a competition one matchday old.
+     * Totals were right throughout; the round column and the label were not.
+     */
     const leagueRound = await prisma.leagueRound.findFirst({
       where: {
         leagueId: req.league!.leagueId,
-        ...(roundSequence ? { sequence: roundSequence } : { standings: { some: {} } }),
+        ...(roundSequence
+          ? { sequence: roundSequence }
+          : { standings: { some: {} }, status: { not: 'UPCOMING' } }),
       },
       orderBy: { sequence: 'desc' },
       select: { id: true, sequence: true, status: true },

@@ -495,27 +495,64 @@ export function RulesEditorRoute() {
           {config.boosters.map((b, i) => (
             <div key={b.type} style={settingRow}>
               <span style={{ flex: 1 }}>{BOOSTER_LABELS[b.type] ?? b.type}</span>
-              <input
-                type="number"
-                aria-label={`Uses per season for ${b.type}`}
-                value={b.usesPerSeason}
-                min={0}
-                max={38}
-                onChange={(e) =>
-                  setConfig((c) =>
-                    c
-                      ? {
-                          ...c,
-                          boosters: c.boosters.map((x, j) =>
-                            j === i ? { ...x, usesPerSeason: Number(e.target.value) } : x,
-                          ),
-                        }
-                      : c,
-                  )
-                }
-                className="tnum"
-                style={numberInput}
-              />
+              <label
+                style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}
+                title="How many times this can be used in a season"
+              >
+                uses{' '}
+                <input
+                  type="number"
+                  aria-label={`Uses per season for ${b.type}`}
+                  value={b.usesPerSeason}
+                  min={0}
+                  max={38}
+                  onChange={(e) =>
+                    setConfig((c) =>
+                      c
+                        ? {
+                            ...c,
+                            boosters: c.boosters.map((x, j) =>
+                              j === i ? { ...x, usesPerSeason: Number(e.target.value) } : x,
+                            ),
+                          }
+                        : c,
+                    )
+                  }
+                  className="tnum"
+                  style={numberInput}
+                />
+              </label>
+              {/* Only a booster staked on ONE match can miss it. Round-level
+                  boosters have no fixture to be wrong about. */}
+              {FIXTURE_BOOSTERS.includes(b.type) && (
+                <label
+                  style={{ fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}
+                  title="Points lost if the boosted prediction scores nothing. 0 means the booster is risk-free."
+                >
+                  penalty{' '}
+                  <input
+                    type="number"
+                    aria-label={`Penalty when ${b.type} misses`}
+                    value={b.penaltyIfWrong ?? 0}
+                    min={0}
+                    max={10}
+                    onChange={(e) =>
+                      setConfig((c) =>
+                        c
+                          ? {
+                              ...c,
+                              boosters: c.boosters.map((x, j) =>
+                                j === i ? { ...x, penaltyIfWrong: Number(e.target.value) } : x,
+                              ),
+                            }
+                          : c,
+                      )
+                    }
+                    className="tnum"
+                    style={numberInput}
+                  />
+                </label>
+              )}
             </div>
           ))}
         </Card>
@@ -622,6 +659,9 @@ export function RulesEditorRoute() {
     </section>
   );
 }
+
+/** Boosters staked on a single fixture, and so capable of missing it. */
+const FIXTURE_BOOSTERS = ['BANKER', 'DOUBLE_POINTS', 'TRIPLE_POINTS'];
 
 const BOOSTER_LABELS: Record<string, string> = {
   DOUBLE_POINTS: 'Double points on one match',

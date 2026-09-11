@@ -145,7 +145,13 @@ describe('predict → lock → score → rank', () => {
   it('locks the round once the deadline passes, and fills in MISSED', async () => {
     await prisma.leagueRound.update({
       where: { id: leagueRoundId },
-      data: { deadlineAt: new Date(Date.now() - 1000) },
+      // ⚠️ A full minute, not a second. `lockDueRounds` compares against
+      // Postgres `now()` (§10.2 — the server clock is the only authority),
+      // while this line uses Node's. The two machines here differ by ~1.4s, so
+      // "one second ago" by Node was still in the FUTURE by the database and
+      // nothing locked. Any margin smaller than the skew makes this test fail
+      // for a reason that has nothing to do with locking.
+      data: { deadlineAt: new Date(Date.now() - 60_000) },
     });
 
     const result = await lockDueRounds(logger);

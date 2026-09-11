@@ -20,6 +20,14 @@ import { isDecidingLeg, resolveKnockoutScore } from './knockout.js';
  * this is what makes the pipeline safe to retry aggressively (§9.1).
  */
 
+/** Whether a score came from a booster penalty rather than from awards. */
+function hasPenalty(breakdown: unknown): boolean {
+  return (
+    Array.isArray(breakdown) &&
+    breakdown.some((e) => (e as { kind?: string } | null)?.kind === 'penalty')
+  );
+}
+
 /** A member's mean round score so far, for the INSURANCE booster. */
 async function averageRoundPoints(leagueId: string, userId: string): Promise<number | null> {
   const rows = await prisma.standingEntry.findMany({
@@ -307,6 +315,16 @@ export async function scoreLeagueRound(
             }
           } else if (booster.type === 'WILDCARD_ROUND') {
             for (const sc of userScores) {
+              /**
+               * ⚠️ A booster penalty is a FIXED cost and is never scaled.
+               *
+               * A league declaring "a missed banker costs 1" means 1, not 1
+               * multiplied by whatever else happened to be active that round.
+               * Without this guard a wildcard turned a -1 into -2 and a
+               * triple-points round into -3, so the number in the rules was
+               * never the number a member actually lost.
+               */
+              if (hasPenalty(sc.breakdown)) continue;
               sc.points = Number(sc.points) * booster.value;
               sc.multiplier = Number(sc.multiplier) * booster.value;
             }

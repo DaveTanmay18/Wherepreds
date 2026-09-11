@@ -32,7 +32,13 @@ export type RuleConfig = {
   rounding: 'none' | 'nearest' | 'floor' | 'ceil';
   minPointsPerFixture: number;
   tiebreakers: string[];
-  boosters: { type: string; value: number; usesPerSeason: number }[];
+  boosters: {
+    type: string;
+    value: number;
+    usesPerSeason: number;
+    /** Points lost when a boosted prediction scores nothing. 0 = risk-free. */
+    penaltyIfWrong?: number;
+  }[];
 };
 
 export type RulesResponse = {

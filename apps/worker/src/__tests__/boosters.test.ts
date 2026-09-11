@@ -70,9 +70,13 @@ beforeAll(async () => {
 
   // Survival can go negative, which is what NO_NEGATIVES needs to bite on.
   const config = instantiatePreset('survival');
+  // penaltyIfWrong is 0 here on purpose: this suite pins MULTIPLICATION and
+  // the NO_NEGATIVES floor. The penalty itself is covered exhaustively in the
+  // pure engine (packages/scoring), and the existing "-3 becomes 0" assertion
+  // already proves the floor catches negatives whatever produced them.
   config.boosters = [
-    { type: 'BANKER', value: 2, usesPerSeason: 5 },
-    { type: 'NO_NEGATIVES', value: 1, usesPerSeason: 2 },
+    { type: 'BANKER', value: 2, usesPerSeason: 5, penaltyIfWrong: 0 },
+    { type: 'NO_NEGATIVES', value: 1, usesPerSeason: 2, penaltyIfWrong: 0 },
   ];
   const ruleSet = await prisma.ruleSet.create({
     data: { leagueId, version: 1, config, isActive: true },

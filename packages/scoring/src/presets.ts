@@ -77,7 +77,7 @@ export const PRESETS: Record<PresetId, Preset> = {
       ],
       multipliers: [],
       minPointsPerFixture: 0,
-      boosters: [{ type: 'BANKER', value: 2, usesPerSeason: 5 }],
+      boosters: [{ type: 'BANKER', value: 2, usesPerSeason: 5, penaltyIfWrong: 1 }],
     },
   },
 
@@ -95,7 +95,7 @@ export const PRESETS: Record<PresetId, Preset> = {
       ],
       multipliers: [],
       minPointsPerFixture: 0,
-      boosters: [{ type: 'DOUBLE_POINTS', value: 2, usesPerSeason: 3 }],
+      boosters: [{ type: 'DOUBLE_POINTS', value: 2, usesPerSeason: 3, penaltyIfWrong: 0 }],
     },
   },
 
@@ -140,7 +140,7 @@ export const PRESETS: Record<PresetId, Preset> = {
         },
       ],
       minPointsPerFixture: 0,
-      boosters: [{ type: 'BANKER', value: 2, usesPerSeason: 5 }],
+      boosters: [{ type: 'BANKER', value: 2, usesPerSeason: 5, penaltyIfWrong: 1 }],
     },
   },
 
@@ -174,7 +174,7 @@ export const PRESETS: Record<PresetId, Preset> = {
       ],
       multipliers: [],
       minPointsPerFixture: -3,
-      boosters: [{ type: 'NO_NEGATIVES', value: 1, usesPerSeason: 2 }],
+      boosters: [{ type: 'NO_NEGATIVES', value: 1, usesPerSeason: 2, penaltyIfWrong: 0 }],
     },
   },
 
@@ -208,7 +208,7 @@ export const PRESETS: Record<PresetId, Preset> = {
       ],
       multipliers: [],
       minPointsPerFixture: 0,
-      boosters: [{ type: 'BANKER', value: 2, usesPerSeason: 5 }],
+      boosters: [{ type: 'BANKER', value: 2, usesPerSeason: 5, penaltyIfWrong: 1 }],
     },
   },
 };

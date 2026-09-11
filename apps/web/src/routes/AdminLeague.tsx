@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../lib/api.js';
+import { copyText, downloadCsv, exportFilename, toDelimited } from '../lib/export.js';
 import { Card, Loading } from '../components/ui.jsx';
 
 type Detail = {
@@ -27,6 +28,21 @@ type Detail = {
       predictionCount: number;
     }[];
   };
+};
+
+type Standings = {
+  round: { sequence: number; name: string; status: string } | null;
+  rows: {
+    position: number;
+    previousPosition: number | null;
+    user: { id: string; username: string; displayName: string };
+    totalPoints: number;
+    roundPoints: number;
+    exactScores: number;
+    correctOutcomes: number;
+    predictionsMade: number;
+    currentStreak: number;
+  }[];
 };
 
 type Selection = {
@@ -60,10 +76,17 @@ type RoundPredictions = {
 export function AdminLeagueRoute() {
   const { slug } = useParams<{ slug: string }>();
   const [sequence, setSequence] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const detail = useQuery({
     queryKey: ['admin', 'league', slug],
     queryFn: () => api.get<Detail>(`/admin/leagues/${slug}`),
+    enabled: !!slug,
+  });
+
+  const standings = useQuery({
+    queryKey: ['admin', 'league', slug, 'standings'],
+    queryFn: () => api.get<Standings>(`/admin/leagues/${slug}/standings`),
     enabled: !!slug,
   });
 
@@ -121,6 +144,115 @@ export function AdminLeagueRoute() {
               </span>
             </div>
           ))}
+        </Card>
+      </div>
+
+      {/* Points table, with export. Admins are asked for this constantly —
+          "send me the table" — and retyping it is where transcription errors
+          come from. */}
+      <div style={{ marginBottom: 'var(--s4)' }}>
+        <Card>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 'var(--s2)',
+              flexWrap: 'wrap',
+              marginBottom: 'var(--s2)',
+            }}
+          >
+            <h2 style={{ fontSize: 'var(--text-sm)', margin: 0, fontWeight: 600 }}>
+              Points table
+              {standings.data?.round && (
+                <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
+                  {' '}
+                  — after {standings.data.round.name}
+                </span>
+              )}
+            </h2>
+            {(standings.data?.rows.length ?? 0) > 0 && (
+              <div style={{ display: 'flex', gap: 'var(--s2)' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // TAB-separated, because that is what pastes into Excel
+                    // and Sheets as columns rather than one mashed cell.
+                    void copyText(
+                      toDelimited(STANDINGS_HEADERS, standingsRows(standings.data!), '	'),
+                    ).then((ok) => {
+                      setCopied(ok);
+                      setTimeout(() => setCopied(false), 2000);
+                    });
+                  }}
+                  style={exportButtonStyle}
+                >
+                  {copied ? '✓ Copied' : 'Copy as text'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    downloadCsv(
+                      exportFilename([l.name, 'points-table']),
+                      toDelimited(STANDINGS_HEADERS, standingsRows(standings.data!)),
+                    )
+                  }
+                  style={exportButtonStyle}
+                >
+                  Download for Excel
+                </button>
+              </div>
+            )}
+          </div>
+
+          {standings.isPending ? (
+            <Loading inline />
+          ) : (standings.data?.rows.length ?? 0) === 0 ? (
+            <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-muted)' }}>
+              No round has been scored yet.
+            </p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table
+                style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}
+              >
+                <thead>
+                  <tr style={{ textAlign: 'left', color: 'var(--text-muted)' }}>
+                    {STANDINGS_HEADERS.map((h, i) => (
+                      <th
+                        key={h}
+                        style={{
+                          padding: 'var(--s1) var(--s2)',
+                          fontWeight: 600,
+                          fontSize: 'var(--text-xs)',
+                          textAlign: i >= 2 ? 'right' : 'left',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {standings.data!.rows.map((r) => (
+                    <tr key={r.user.id} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ padding: 'var(--s2)', fontWeight: 700 }}>{r.position}</td>
+                      <td style={{ padding: 'var(--s2)' }}>
+                        {r.user.displayName}{' '}
+                        <span style={{ color: 'var(--text-muted)' }}>@{r.user.username}</span>
+                      </td>
+                      <td style={numCell}>{r.totalPoints}</td>
+                      <td style={numCell}>{r.roundPoints}</td>
+                      <td style={numCell}>{r.exactScores}</td>
+                      <td style={numCell}>{r.correctOutcomes}</td>
+                      <td style={numCell}>{r.predictionsMade}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
       </div>
 
@@ -282,3 +414,43 @@ export function AdminLeagueRoute() {
     </section>
   );
 }
+
+const STANDINGS_HEADERS = [
+  'Position',
+  'Player',
+  'Total points',
+  'Round points',
+  'Exact scores',
+  'Correct outcomes',
+  'Predictions made',
+];
+
+/** One array per row, in the same order as STANDINGS_HEADERS. */
+function standingsRows(s: Standings): unknown[][] {
+  return s.rows.map((r) => [
+    r.position,
+    r.user.displayName,
+    r.totalPoints,
+    r.roundPoints,
+    r.exactScores,
+    r.correctOutcomes,
+    r.predictionsMade,
+  ]);
+}
+
+const numCell = {
+  padding: 'var(--s2)',
+  textAlign: 'right',
+  fontVariantNumeric: 'tabular-nums',
+} as const;
+
+const exportButtonStyle = {
+  minHeight: 32,
+  padding: '0 var(--s3)',
+  background: 'transparent',
+  color: 'var(--text)',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius-md)',
+  fontSize: 'var(--text-xs)',
+  cursor: 'pointer',
+} as const;

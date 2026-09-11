@@ -11,7 +11,10 @@ import { readFact, type ScoringFacts } from './facts.js';
 
 export type BreakdownEntry =
   | { kind: 'award'; ruleId: string; label: string; points: number; group: string | null }
-  | { kind: 'multiplier'; ruleId: string; label: string; factor: number };
+  | { kind: 'multiplier'; ruleId: string; label: string; factor: number }
+  // Recorded so a breakdown can say WHY a fixture shows a negative score.
+  // Without an entry the sheet reads "-1" with nothing to point at.
+  | { kind: 'penalty'; ruleId: string; label: string; points: number };
 
 export type ScoreResult = {
   basePoints: number;
@@ -64,6 +67,15 @@ function applyRounding(value: number, mode: RuleSetConfig['rounding']): number {
       // table. 0.1 + 0.2 must not become 0.30000000000000004 on a leaderboard.
       return Math.round(value * 100) / 100;
   }
+}
+
+/** What a boosted prediction costs when it earns nothing. 0 disables it. */
+function boosterPenalty(active: string | null, config: RuleSetConfig): number {
+  if (!active) return 0;
+  const booster = config.boosters.find((b) => b.type === active);
+  // Round-level boosters are not a per-fixture bet, so they cannot miss one.
+  if (!booster || active === 'INSURANCE' || active === 'NO_NEGATIVES') return 0;
+  return booster.penaltyIfWrong ?? 0;
 }
 
 /** Booster multipliers, resolved from the config's declared boosters. */
@@ -139,7 +151,37 @@ export function scorePrediction(facts: ScoringFacts, config: RuleSetConfig): Sco
   // ── 4. Apply, floor, round ───────────────────────────────────────────
   const raw = basePoints * multiplier;
   const floored = Math.max(raw, config.minPointsPerFixture);
-  const points = applyRounding(floored, config.rounding);
+  let points = applyRounding(floored, config.rounding);
+
+  /**
+   * ── 5. Booster penalty ───────────────────────────────────────────────
+   *
+   * A boosted prediction that earned NOTHING costs the member points, if the
+   * league declared a penalty for it.
+   *
+   * ⚠️ Deliberately REPLACES the score rather than being added as an award.
+   * An award of -1 would be multiplied by the booster's own factor (-1 x 2 =
+   * -2), and then clamped straight back to 0 by `minPointsPerFixture`, which
+   * is 0 in every preset — so the penalty would silently do nothing at all.
+   * Bypassing both is the only way the declared number is the number applied.
+   *
+   * "Earned nothing" is the test, not "got the outcome wrong": in a league
+   * paying 1 for the outcome and 5 for the exact score, a banked prediction
+   * that lands the outcome has earned something and is not a miss.
+   *
+   * NO_NEGATIVES still floors this to 0 — that booster is applied at round
+   * level by the worker, after this runs, which is exactly its purpose.
+   */
+  const penalty = boosterPenalty(facts.context.boosterActive, config);
+  if (penalty > 0 && points <= 0) {
+    points = -penalty;
+    fired.push({
+      kind: 'penalty',
+      ruleId: `booster-miss:${facts.context.boosterActive}`,
+      label: `${facts.context.boosterActive} missed`,
+      points: -penalty,
+    });
+  }
 
   return {
     basePoints,

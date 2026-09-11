@@ -261,3 +261,82 @@ adminRouter.get(
     });
   },
 );
+
+/**
+ * The league's points table, for any round that has one.
+ *
+ * Served from the admin router rather than reusing `/leagues/:slug/standings`
+ * because that route is behind `requireMember` — an operator investigating a
+ * league they do not play in would be refused by design. Everything here is
+ * already-published information: members see this table on their own standings
+ * screen, so unlike the picks route there is nothing to audit.
+ */
+adminRouter.get(
+  '/admin/leagues/:slug/standings',
+  validate({
+    params: z.object({ slug: z.string() }),
+    query: z.object({ sequence: z.coerce.number().int().min(1).optional() }),
+  }),
+  async (req, res) => {
+    const league = await prisma.predictionLeague.findUnique({
+      where: { slug: String(req.params.slug) },
+      select: { id: true, name: true },
+    });
+    if (!league) throw notFound('No such league.');
+
+    const q = req.query as unknown as { sequence?: number };
+
+    // ⚠️ The latest round that has actually been PLAYED, not merely the
+    // latest that has a standings row. rebuildStandings carries totals forward
+    // into every remaining round of the season, so "newest row" resolved to
+    // Matchday 8 in a competition where only Matchday 1 has been played — a
+    // header that reads as though seven rounds went unscored. Totals are
+    // identical either way; only the label was wrong.
+    const leagueRound = await prisma.leagueRound.findFirst({
+      where: {
+        leagueId: league.id,
+        ...(q.sequence
+          ? { sequence: q.sequence }
+          : { standings: { some: {} }, status: { not: LeagueRoundStatus.UPCOMING } }),
+      },
+      orderBy: { sequence: q.sequence ? 'asc' : 'desc' },
+      include: { round: { select: { name: true } } },
+    });
+
+    if (!leagueRound) {
+      return res.json({
+        league: { slug: String(req.params.slug), name: league.name },
+        round: null,
+        rows: [],
+      });
+    }
+
+    const rows = await prisma.standingEntry.findMany({
+      where: { leagueRoundId: leagueRound.id },
+      orderBy: { position: 'asc' },
+      include: { user: { select: { id: true, username: true, displayName: true } } },
+    });
+
+    res.json({
+      league: { slug: String(req.params.slug), name: league.name },
+      round: {
+        sequence: leagueRound.sequence,
+        name: leagueRound.round.name,
+        status: leagueRound.status,
+      },
+      rows: rows.map((r) => ({
+        position: r.position,
+        previousPosition: r.previousPosition,
+        user: r.user,
+        // Decimals are serialised as strings by Prisma; Number() here keeps the
+        // client from having to know that.
+        totalPoints: Number(r.totalPoints),
+        roundPoints: Number(r.roundPoints),
+        exactScores: r.exactScores,
+        correctOutcomes: r.correctOutcomes,
+        predictionsMade: r.predictionsMade,
+        currentStreak: r.currentStreak,
+      })),
+    });
+  },
+);

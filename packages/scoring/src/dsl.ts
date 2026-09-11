@@ -176,6 +176,18 @@ export const ruleSetConfigSchema = z.object({
         type: z.enum(BOOSTER_TYPES),
         value: z.number().min(0).max(5),
         usesPerSeason: z.number().int().min(0).max(38),
+        /**
+         * Points deducted when a boosted prediction earns nothing.
+         *
+         * ⚠️ Without this a fixture booster is pure upside: a wrong banker
+         * scores 0 x 2 = 0, so nominating your least confident match costs
+         * exactly as much as nominating your most confident one, and the
+         * "banker" stops being a decision. A penalty is what makes it a bet.
+         *
+         * Defaults to 0, so every rule set written before this field existed
+         * keeps behaving exactly as it did.
+         */
+        penaltyIfWrong: z.number().min(0).max(10).default(0),
       }),
     )
     .max(4)

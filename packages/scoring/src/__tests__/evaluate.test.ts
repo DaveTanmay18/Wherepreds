@@ -263,3 +263,69 @@ describe('interpreter — invariants (§17.2)', () => {
     expect(Number.isInteger(r.points * 100)).toBe(true);
   });
 });
+
+/**
+ * Booster penalty (banker risk).
+ *
+ * A booster that only ever multiplies is pure upside — nominating your least
+ * confident match costs the same as your most confident one, so the "banker"
+ * is not a decision. These pin the behaviour that makes it a bet.
+ */
+describe('booster penalty when a boosted prediction misses', () => {
+  const withPenalty = (penalty: number): RuleSetConfig => {
+    const c = instantiatePreset('classic');
+    c.boosters = [{ type: 'BANKER', value: 2, usesPerSeason: 5, penaltyIfWrong: penalty }];
+    return c;
+  };
+
+  it('deducts the declared penalty when a banked prediction earns nothing', () => {
+    const res = score([3, 0], [0, 2], withPenalty(1), { boosterActive: 'BANKER' });
+    expect(res.points).toBe(-1);
+  });
+
+  it('applies the penalty EXACTLY, not multiplied by the booster', () => {
+    // ⚠️ The trap this guards: expressed as a -1 award the banker's own x2
+    // would turn it into -2. The declared number must be the number applied.
+    const res = score([3, 0], [0, 2], withPenalty(1), { boosterActive: 'BANKER' });
+    expect(res.points).toBe(-1);
+
+    const bigger = score([3, 0], [0, 2], withPenalty(3), { boosterActive: 'BANKER' });
+    expect(bigger.points).toBe(-3);
+  });
+
+  it('survives minPointsPerFixture, which is 0 in every preset', () => {
+    // ⚠️ The other trap: the floor would clamp a negative straight back to 0
+    // and the setting would silently do nothing.
+    const config = withPenalty(1);
+    expect(config.minPointsPerFixture).toBe(0);
+    expect(score([3, 0], [0, 2], config, { boosterActive: 'BANKER' }).points).toBe(-1);
+  });
+
+  it('does NOT penalise a banked prediction that earned something', () => {
+    // Right outcome, wrong scoreline: Classic still pays for the outcome, so
+    // this is not a miss even though the exact score was wrong.
+    const res = score([2, 0], [1, 0], withPenalty(1), { boosterActive: 'BANKER' });
+    expect(res.points).toBeGreaterThan(0);
+  });
+
+  it('doubles a correct banked prediction as before', () => {
+    const plain = score([2, 1], [2, 1], withPenalty(1));
+    const banked = score([2, 1], [2, 1], withPenalty(1), { boosterActive: 'BANKER' });
+    expect(banked.points).toBe(plain.points * 2);
+  });
+
+  it('leaves rule sets without a penalty exactly as they were', () => {
+    expect(score([3, 0], [0, 2], withPenalty(0), { boosterActive: 'BANKER' }).points).toBe(0);
+  });
+
+  it('never penalises an unboosted prediction', () => {
+    expect(score([3, 0], [0, 2], withPenalty(1)).points).toBe(0);
+  });
+
+  it('records the penalty in the breakdown, so a -1 can be explained', () => {
+    const res = score([3, 0], [0, 2], withPenalty(1), { boosterActive: 'BANKER' });
+    const entry = res.breakdown.find((e) => e.kind === 'penalty');
+    expect(entry).toBeDefined();
+    expect(entry).toMatchObject({ points: -1 });
+  });
+});
